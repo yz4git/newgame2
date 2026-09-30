@@ -1834,6 +1834,18 @@ export class BrickStudio {
       visual.mesh.position.y = visual.baseY - travel;
       visual.mesh.rotation.y = Math.PI / 2 + (visual.steering ? info.steering : 0);
       visual.mesh.rotation.z = info.rotation;
+
+      const side = Number(visual.mesh.userData.wheelSide ?? 1);
+      const group = this.brickLayer.children[visual.recordIndex];
+      group?.traverse(object => {
+        if (Number(object.userData.wheelSide ?? 0) !== side) return;
+        if (object.userData.partRole === 'suspension-shock') {
+          object.scale.y = THREE.MathUtils.clamp(1 - travel * 1.75, .66, 1.34);
+          object.position.y = BODY_H * .74 - travel * .35;
+        } else if (object.userData.partRole === 'suspension-arm') {
+          object.rotation.z = side * (-.18 + travel * .65);
+        }
+      });
     }
 
     const visualPower = throttle * (motorEnabled ? 1 : .16) *
