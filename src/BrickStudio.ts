@@ -227,7 +227,7 @@ export class BrickStudio {
         const a = gears[i].record;
         const b = gears[j].record;
         const distance = Math.hypot(a.x - b.x, a.z - b.z);
-        if (Math.abs(a.y - b.y) <= BODY_H * .8 && distance >= STUD * .65 && distance <= STUD * 1.65) pairs++;
+        if (Math.abs(a.y - b.y) <= BODY_H * .8 && distance >= STUD * .65 && distance <= STUD * 2.12) pairs++;
       }
     }
     return pairs;
@@ -466,7 +466,7 @@ export class BrickStudio {
       )),
       new CANNON.Vec3(center.x, Math.max(.25, center.y * .55), center.z)
     );
-    body.position.set(0, .52, 0);
+    body.position.set(0, .68, 0);
 
     const vehicle = new CANNON.RaycastVehicle({
       chassisBody: body,
@@ -497,20 +497,20 @@ export class BrickStudio {
         const wheelIndex = vehicle.addWheel({
           radius: .50,
           directionLocal: new CANNON.Vec3(0, -1, 0),
-          suspensionStiffness: 38,
-          suspensionRestLength: .30,
-          frictionSlip: 4.8,
-          dampingRelaxation: 2.6,
-          dampingCompression: 4.8,
-          maxSuspensionForce: 6200,
+          suspensionStiffness: 34,
+          suspensionRestLength: .44,
+          frictionSlip: 5.2,
+          dampingRelaxation: 2.8,
+          dampingCompression: 4.5,
+          maxSuspensionForce: 7600,
           rollInfluence: .045,
           axleLocal: new CANNON.Vec3(-1, 0, 0),
           chassisConnectionPointLocal: new CANNON.Vec3(
             localX,
-            record.y + BODY_H * .55 + .25,
+            record.y + BODY_H * .38 + .18,
             localZ
           ),
-          maxSuspensionTravel: .24,
+          maxSuspensionTravel: .34,
           customSlidingRotationalSpeed: -24,
           useCustomSlidingRotationalSpeed: true
         });
@@ -2103,7 +2103,7 @@ export class BrickStudio {
       const distance = Math.hypot(a.x - b.x, a.z - b.z);
       return Math.abs(a.y - b.y) <= BODY_H * .8 &&
         distance >= STUD * .65 &&
-        distance <= STUD * 1.65;
+        distance <= STUD * 2.12;
     };
 
     for (const root of gearIds) {
@@ -2277,7 +2277,7 @@ export class BrickStudio {
     for (const visual of this.driveWheelVisuals) {
       const info = vehicle.wheelInfos[visual.wheelIndex];
       if (!info) continue;
-      const travel = info.suspensionLength - .30;
+      const travel = info.suspensionLength - .44;
       visual.mesh.position.y = visual.baseY - travel;
       visual.mesh.rotation.y = Math.PI / 2 + (visual.steering ? info.steering : 0);
       visual.mesh.rotation.z = info.rotation;
