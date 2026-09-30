@@ -42,6 +42,7 @@ interface InstructionModel {
 }
 
 interface PhysicsEntry {
+  recordIndex: number;
   body: CANNON.Body;
   mesh: THREE.Group;
   height: number;
@@ -89,6 +90,7 @@ export class BrickStudio {
   private driveTerrain = new THREE.Group();
   private ghost: THREE.Group;
   private ghostValid = true;
+  private ghostPointerReady = false;
   private selected: BrickSpec = { kind: 'brick', w: 2, d: 4, color: 0xe53935, rotation: 0 };
   private mode: Mode = 'build';
   private records: BrickRecord[] = [];
@@ -169,6 +171,7 @@ export class BrickStudio {
 
     this.ghost = createPart(this.selected, 0.46);
     this.setGhostMaterial(false);
+    this.ghost.visible = false;
     this.scene.add(this.ghost);
 
     this.updateCamera();
@@ -183,6 +186,14 @@ export class BrickStudio {
   get selectionCount(): number { return this.selectedIds.size; }
   get physicsActive(): boolean { return Boolean(this.physicsWorld); }
   get driveActive(): boolean { return this.driveActiveState; }
+  get driveBlockedReason(): string {
+    if (this.records.length > 120) return 'DIORAMA // DRIVE TEST IS FOR VEHICLE BUILDS';
+    if (!this.records.length || (this.wheelCount < 2 && this.propellerCount < 1)) {
+      return 'ADD 2 WHEEL MODULES OR A PROPELLER';
+    }
+    return '';
+  }
+  get collapseBodyCount(): number { return this.physicsEntries.length; }
   get wheelCount(): number { return this.records.filter(record => record.kind === 'wheel').length; }
   get motorCount(): number { return this.records.filter(record => record.kind === 'motor').length; }
   get gearCount(): number { return this.records.filter(record => record.kind === 'gear').length; }
@@ -408,7 +419,7 @@ export class BrickStudio {
       this.stopDrive(true);
       return true;
     }
-    if (!this.records.length || (this.wheelCount < 2 && this.propellerCount < 1)) return false;
+    if (this.driveBlockedReason) return false;
 
     this.selectedIds.clear();
     this.refreshSelectionVisual();
@@ -1116,6 +1127,8 @@ export class BrickStudio {
       diorama ? 22.5 :
       sampleId === 'titan' ? 17.0 : 15.5;
     this.updateCamera();
+    this.ghostPointerReady = false;
+    this.ghost.visible = false;
     return true;
   }
 
@@ -1383,6 +1396,10 @@ export class BrickStudio {
       if (this.mode === 'instruction' || this.driveActive) return;
       this.canvas.setPointerCapture(event.pointerId);
       this.updatePointerNdc(event.clientX, event.clientY);
+      if (this.mode === 'build' && !this.physicsActive) {
+        this.ghostPointerReady = true;
+        this.updateGhost();
+      }
 
       if (this.physicsActive) {
         const id = this.partIdAtPointer();
@@ -1445,6 +1462,7 @@ export class BrickStudio {
       const info = this.pointers.get(event.pointerId);
       if (!info) {
         this.updatePointerNdc(event.clientX, event.clientY);
+        this.ghostPointerReady = true;
         this.updateGhost();
         return;
       }
@@ -1505,6 +1523,10 @@ export class BrickStudio {
         else if (this.mode === 'select') this.toggleSelectionAtPointer();
         else if (this.mode === 'build') this.placeAtPointer();
       }
+      if (event.pointerType === 'touch') {
+        this.ghostPointerReady = false;
+        this.ghost.visible = false;
+      }
     };
 
     this.canvas.addEventListener('pointerup', release);
@@ -1518,7 +1540,7 @@ export class BrickStudio {
   }
 
   private beginPhysicsGrab(index: number, pointerId: number): void {
-    const entry = this.physicsEntries[index];
+    const entry = this.physicsEntries.find(item => item.recordIndex === index);
     if (!entry) return;
     const worldPos = entry.mesh.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, entry.height / 2, 0));
     entry.body.type = CANNON.Body.KINEMATIC;
@@ -1772,13 +1794,24 @@ export class BrickStudio {
         : undefined
     }));
     this.selectedIds.clear();
+    this.ghostPointerReady = false;
+    this.ghost.visible = false;
     this.rebuildAll();
+    this.updateRenderQuality();
     this.notify();
+  }
+
+  private updateRenderQuality(): void {
+    const dpr = window.devicePixelRatio || 1;
+    const cap = this.records.length > 180 ? 1.25 : this.records.length > 100 ? 1.5 : 2;
+    this.renderer.setPixelRatio(Math.min(dpr, cap));
+    this.resize();
   }
 
   private rebuildGhost(): void {
     this.scene.remove(this.ghost);
     this.ghost = createPart(this.selected, 0.46);
+    this.ghost.visible = false;
     this.scene.add(this.ghost);
     this.updateGhost();
   }
@@ -1798,7 +1831,7 @@ export class BrickStudio {
   }
 
   private updateGhost(): void {
-    if (this.mode !== 'build' || this.physicsActive) {
+    if (!this.ghostPointerReady || this.mode !== 'build' || this.physicsActive) {
       this.ghost.visible = false;
       return;
     }
