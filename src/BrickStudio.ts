@@ -715,7 +715,10 @@ export class BrickStudio {
     return true;
   }
 
-  loadSample(sampleId: 'house' | 'titan' | 'rescue' | 'fortress' | 'explorer'): boolean {
+  loadSample(sampleId:
+    | 'house' | 'titan' | 'rescue' | 'fortress' | 'explorer'
+    | 'skyport' | 'harbor' | 'alpine' | 'megaforge'
+  ): boolean {
     if (this.physicsActive || this.driveActive) return false;
     this.pushHistory();
 
@@ -893,9 +896,225 @@ export class BrickStudio {
       for (const x of [-1.6, 1.6]) add('roof', 2, 4, x, BODY_H * 5.2, 0, C.white);
     }
 
+
+    if (sampleId === 'skyport') {
+      // SKYPORT CITY: elevated terminal, control tower, service convoy and turbine gates.
+      for (const z of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+        for (const x of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+          if (Math.abs(x) <= 1.6 || Math.abs(z) >= 4.8 || (Math.abs(x) >= 4.8 && Math.abs(z) <= 3.2)) {
+            add('brick', 2, 4, x, BODY_H * .35, z, C.gray);
+          }
+        }
+      }
+
+      for (const yLayer of [1.5, 2.5, 3.5]) {
+        const y = BODY_H * yLayer;
+        brickLineX(-4.8, y, C.white, -5.6, 5.6);
+        brickLineX(4.8, y, C.white, -5.6, 5.6);
+        brickLineZ(-5.6, y, C.blue, -3.2, 3.2);
+        brickLineZ(5.6, y, C.blue, -3.2, 3.2);
+      }
+
+      for (const x of [-4.8,-3.2,-1.6,0,1.6,3.2,4.8]) {
+        add('window', 2, 1, x, BODY_H * 4.6, -4.8, C.cyan);
+        add('window', 2, 1, x, BODY_H * 4.6, 4.8, C.cyan);
+      }
+
+      for (const z of [-2.4,0,2.4]) {
+        add('hinge', 2, 2, -5.6, BODY_H * 4.8, z, C.orange, 1, { hingeAngle: 72 });
+        add('hinge', 2, 2, 5.6, BODY_H * 4.8, z, C.orange, 1, { hingeAngle: 72 });
+      }
+
+      for (const yLayer of [1,2,3,4,5,6,7,8]) {
+        add('brick', 2, 2, 0, BODY_H * yLayer, 0, yLayer % 2 ? C.black : C.blue);
+      }
+      for (const x of [-1.6,0,1.6]) {
+        add('window', 2, 1, x, BODY_H * 9.2, 0, C.cyan);
+      }
+      add('roof', 2, 4, 0, BODY_H * 11.4, 0, C.white);
+      add('propeller', 2, 2, -1.6, BODY_H * 10.4, 1.6, C.red);
+      add('propeller', 2, 2, 1.6, BODY_H * 10.4, 1.6, C.red);
+
+      for (const x of [-4.0,-2.4,-.8,.8,2.4,4.0]) {
+        add('gear', 2, 2, x, BODY_H * 2.0, -1.6, C.yellow);
+      }
+      add('motor', 2, 2, -4.0, BODY_H * 3.2, -1.6, C.red);
+      add('motor', 2, 2, 4.0, BODY_H * 3.2, -1.6, C.red);
+
+      for (const z of [-5.6,-2.4,.8,4.0]) add('wheel', 2, 2, -3.2, 0, z, C.black);
+      for (const z of [-5.6,-2.4,.8,4.0]) add('wheel', 2, 2, 3.2, 0, z, C.black);
+
+      add('program', 2, 2, 0, BODY_H * 5.2, -3.2, C.white, 0, {
+        programSteps: [
+          'motorOn','forward','left','forward','right',
+          'hingeOpen','wait','hingeClose','forward','wait'
+        ]
+      });
+
+      for (const x of [-4.8,-1.6,1.6,4.8]) {
+        add('roof', 2, 4, x, BODY_H * 6.2, -4.0, C.blue);
+        add('roof', 2, 4, x, BODY_H * 6.2, 4.0, C.blue);
+      }
+    }
+
+    if (sampleId === 'harbor') {
+      // INDUSTRIAL HARBOR: docks, warehouses, crane towers and powered machinery.
+      for (const z of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+        for (const x of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+          if (z >= 0 || x <= -3.2) add('brick', 2, 4, x, BODY_H * .3, z, z < 0 ? C.gray : C.black);
+        }
+      }
+
+      for (const yLayer of [1.4,2.4,3.4,4.4]) {
+        const y = BODY_H * yLayer;
+        brickLineX(4.8, y, C.orange, -5.6, -1.6);
+        brickLineX(1.6, y, C.orange, -5.6, -1.6);
+        brickLineZ(-5.6, y, C.orange, 2.4, 4.8);
+        brickLineZ(-1.6, y, C.orange, 2.4, 4.8);
+      }
+
+      for (const x of [-4.8,-3.2,-1.6,0,1.6,3.2]) {
+        add('window', 2, 1, x, BODY_H * 4.8, 1.6, C.cyan);
+        add('roof', 2, 4, x, BODY_H * 6.0, 3.2, C.gray);
+      }
+
+      for (const craneX of [2.4,5.6]) {
+        for (const yLayer of [1,2,3,4,5,6,7,8]) {
+          add('brick', 2, 2, craneX, BODY_H * yLayer, -3.2, C.yellow);
+        }
+        for (const x of [craneX-1.6,craneX,craneX+1.6]) {
+          add('brick', 2, 4, x, BODY_H * 9.1, -3.2, C.yellow);
+        }
+        add('hinge', 2, 2, craneX+1.6, BODY_H * 10.2, -3.2, C.orange, 1, { hingeAngle: 88 });
+        add('gear', 2, 2, craneX, BODY_H * 7.6, -2.0, C.yellow);
+        add('gear', 2, 2, craneX+1.2, BODY_H * 7.6, -2.0, C.yellow);
+        add('motor', 2, 2, craneX-1.2, BODY_H * 7.6, -2.0, C.red);
+      }
+
+      for (const z of [1.6,3.2,4.8,6.4]) {
+        for (const x of [1.6,3.2,4.8,6.4]) {
+          add('brick', 2, 4, x, BODY_H * 1.4, z, (Math.round((x+z)*10) % 3 === 0) ? C.red : C.blue);
+          if ((x + z) % 3.2 < .2) add('brick', 2, 4, x, BODY_H * 2.4, z, C.orange);
+        }
+      }
+
+      for (const z of [-5.6,-3.2,-.8]) add('wheel', 2, 2, -4.0, 0, z, C.black);
+      add('motor', 2, 2, -4.0, BODY_H * 1.6, -2.4, C.red);
+      add('program', 2, 2, -4.0, BODY_H * 2.8, -1.0, C.white, 0, {
+        programSteps: ['motorOn','forward','left','forward','wait','right','forward']
+      });
+
+      for (const x of [-5.6,-4.0,-2.4]) {
+        add('slope', 2, 4, x, BODY_H * 1.2, -6.0, C.gray);
+      }
+    }
+
+    if (sampleId === 'alpine') {
+      // ALPINE RESCUE BASE: mountain station, bridge, hangar and rescue convoy.
+      for (const z of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+        for (const x of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+          const ridge = Math.abs(x) + Math.abs(z) > 7.2;
+          const y = ridge ? BODY_H * 1.1 : BODY_H * .25;
+          add('brick', 2, 4, x, y, z, ridge ? C.gray : C.white);
+          if (ridge && (Math.abs(x) + Math.abs(z) > 9.5)) {
+            add('slope', 2, 2, x, y + BODY_H, z, C.white, (x+z>0?1:0));
+          }
+        }
+      }
+
+      for (const yLayer of [2,3,4,5]) {
+        const y = BODY_H * yLayer;
+        brickLineX(-2.4, y, C.red, -4.8, 0);
+        brickLineX(2.4, y, C.red, -4.8, 0);
+        brickLineZ(-4.8, y, C.red, -1.6, 1.6);
+        brickLineZ(0, y, C.red, -1.6, 1.6);
+      }
+      for (const z of [-1.6,0,1.6]) {
+        add('window', 2, 1, -4.8, BODY_H * 6.0, z, C.cyan, 1);
+        add('window', 2, 1, 0, BODY_H * 6.0, z, C.cyan, 1);
+      }
+      for (const x of [-4.0,-2.4,-.8]) add('roof', 2, 4, x, BODY_H * 7.2, 0, C.blue);
+
+      for (const x of [1.6,3.2,4.8,6.4]) {
+        add('brick', 2, 4, x, BODY_H * 2.4, -1.6, C.gray);
+        add('brick', 2, 4, x, BODY_H * 2.4, 1.6, C.gray);
+      }
+      add('hinge', 2, 2, 1.6, BODY_H * 3.5, -1.6, C.orange, 0, { hingeAngle: 18 });
+      add('hinge', 2, 2, 6.4, BODY_H * 3.5, 1.6, C.orange, 0, { hingeAngle: 18 });
+
+      for (const z of [3.2,4.8,6.4]) add('wheel', 2, 2, 3.2, 0, z, C.black);
+      add('motor', 2, 2, 3.2, BODY_H * 1.6, 4.8, C.red);
+      add('gear', 2, 2, 2.4, BODY_H * 2.8, 4.8, C.yellow);
+      add('gear', 2, 2, 4.0, BODY_H * 2.8, 4.8, C.yellow);
+      add('propeller', 2, 2, 3.2, BODY_H * 4.0, 6.4, C.red);
+      add('program', 2, 2, 3.2, BODY_H * 4.0, 3.2, C.white, 0, {
+        programSteps: ['motorOn','forward','left','wait','hingeOpen','hingeClose','right','forward']
+      });
+
+      for (const x of [2.4,4.0]) {
+        for (const z of [-5.6,-4.0]) add('roof', 2, 4, x, BODY_H * 3.6, z, C.red);
+      }
+    }
+
+    if (sampleId === 'megaforge') {
+      // MEGAFORGE DISTRICT: factory blocks, gear walls, gates and powered test lane.
+      for (const z of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+        for (const x of [-6.4,-4.8,-3.2,-1.6,0,1.6,3.2,4.8,6.4]) {
+          if (!(Math.abs(x) < 1.0 && z < 4.8)) add('brick', 2, 4, x, BODY_H * .28, z, C.black);
+        }
+      }
+
+      for (const bx of [-5.0, 3.0]) {
+        for (const yLayer of [1.3,2.3,3.3,4.3,5.3]) {
+          const y = BODY_H * yLayer;
+          brickLineX(-4.0, y, C.gray, bx-1.6, bx+1.6);
+          brickLineX(1.6, y, C.gray, bx-1.6, bx+1.6);
+          brickLineZ(bx-1.6, y, C.gray, -2.4, .8);
+          brickLineZ(bx+1.6, y, C.gray, -2.4, .8);
+        }
+        for (const z of [-2.4,-.8,.8]) {
+          add('window', 2, 1, bx-1.6, BODY_H * 6.2, z, C.orange, 1);
+          add('window', 2, 1, bx+1.6, BODY_H * 6.2, z, C.orange, 1);
+        }
+      }
+
+      for (const z of [-5.6,-4.0,-2.4,-.8,.8,2.4]) {
+        for (const x of [-.8,.8]) add('gear', 2, 2, x, BODY_H * 2.2, z, C.yellow);
+      }
+      add('motor', 2, 2, -2.4, BODY_H * 2.2, -5.6, C.red);
+      add('motor', 2, 2, 2.4, BODY_H * 2.2, 2.4, C.red);
+
+      for (const z of [-4.8,-1.6,1.6,4.8]) {
+        add('hinge', 2, 2, -2.4, BODY_H * 3.4, z, C.orange, 1, { hingeAngle: 85 });
+        add('hinge', 2, 2, 2.4, BODY_H * 3.4, z, C.orange, 1, { hingeAngle: 85 });
+      }
+
+      for (const x of [-5.6,-2.4,.8,4.0]) {
+        add('propeller', 2, 2, x, BODY_H * 7.0, 4.8, C.cyan);
+        add('roof', 2, 4, x, BODY_H * 8.0, 4.8, C.red);
+      }
+
+      for (const z of [-5.6,-2.4,.8,4.0]) add('wheel', 2, 2, 5.6, 0, z, C.black);
+      add('motor', 2, 2, 5.6, BODY_H * 1.6, -1.6, C.red);
+      add('program', 2, 2, 5.6, BODY_H * 2.8, 1.6, C.white, 0, {
+        programSteps: [
+          'motorOn','forward','hingeOpen','wait',
+          'forward','hingeClose','left','forward','right'
+        ]
+      });
+
+      for (const x of [-5.6,-4.0,-2.4]) {
+        add('slope', 2, 4, x, BODY_H * 1.5, 5.6, C.orange);
+      }
+    }
+
     this.restore(list);
-    this.orbitTarget.set(0, sampleId === 'fortress' ? 2.1 : 1.5, 0);
-    this.distance = sampleId === 'fortress' ? 18.5 : sampleId === 'titan' ? 17.0 : 15.5;
+    const diorama = ['skyport','harbor','alpine','megaforge'].includes(sampleId);
+    this.orbitTarget.set(0, sampleId === 'fortress' ? 2.1 : diorama ? 2.8 : 1.5, 0);
+    this.distance =
+      sampleId === 'fortress' ? 18.5 :
+      diorama ? 22.5 :
+      sampleId === 'titan' ? 17.0 : 15.5;
     this.updateCamera();
     return true;
   }
