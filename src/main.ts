@@ -297,12 +297,13 @@ const instructionModelTitle = ui.querySelector('.instruction-model-title') as HT
 const driveStats = ui.querySelector('.drive-stats') as HTMLElement;
 const programSequence = ui.querySelector('.program-sequence') as HTMLElement;
 const toast = ui.querySelector('.toast') as HTMLElement;
-const toolsButtons = ui.querySelectorAll<HTMLButtonElement>('[data-action="tools"]');
+const uiRoot = ui as HTMLElement;
+const toolsButtons = uiRoot.querySelectorAll<HTMLButtonElement>('[data-action="tools"]');
 let toolsOpen = true;
 
 function setToolsOpen(open: boolean): void {
   toolsOpen = open;
-  ui.classList.toggle('tools-collapsed', !open);
+  uiRoot.classList.toggle('tools-collapsed', !open);
   toolsButtons.forEach(button => {
     if (button.classList.contains('tools-open-tab')) button.textContent = 'TOOLS';
     else button.setAttribute('aria-label', open ? 'Hide build tools' : 'Show build tools');
