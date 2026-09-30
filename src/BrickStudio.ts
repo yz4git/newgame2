@@ -1898,6 +1898,7 @@ export class BrickStudio {
     this.physicsSnapshot = this.snapshot();
     this.selectedIds.clear();
     this.refreshSelectionVisual();
+    this.ghostPointerReady = false;
     this.ghost.visible = false;
 
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
@@ -1910,8 +1911,28 @@ export class BrickStudio {
     groundBody.position.y = -.02;
     world.addBody(groundBody);
 
+    // Large dioramas can contain hundreds of render pieces. Simulating every
+    // piece as a rigid body overwhelms mobile browsers, so keep the structural
+    // core static and simulate the most visually important upper/special parts.
+    const maxBodies = 96;
+    const ranked = this.records.map((record, index) => ({
+      index,
+      score:
+        (record.kind === 'brick' ? 0 : 120) +
+        record.y * 24 +
+        (((index * 37) % 29) / 29)
+    }));
+    const activeIndices = new Set(
+      (this.records.length <= maxBodies ? ranked : ranked.sort((a, b) => b.score - a.score).slice(0, maxBodies))
+        .map(item => item.index)
+    );
+
     this.physicsEntries = [];
+    const entryByRecord = new Map<number, PhysicsEntry>();
+
     this.records.forEach((record, index) => {
+      if (!activeIndices.has(index)) return;
+
       const f = footprint(record);
       const h = partHeight(record);
       const body = new CANNON.Body({
@@ -1941,18 +1962,20 @@ export class BrickStudio {
       world.addBody(body);
 
       const mesh = this.brickLayer.children[index] as THREE.Group;
-      this.physicsEntries.push({ body, mesh, height: h });
+      const entry: PhysicsEntry = { recordIndex: index, body, mesh, height: h };
+      this.physicsEntries.push(entry);
+      entryByRecord.set(index, entry);
     });
 
     this.records.forEach((record, index) => {
       if (record.kind !== 'hinge') return;
-      const hingeEntry = this.physicsEntries[index];
+      const hingeEntry = entryByRecord.get(index);
       if (!hingeEntry) return;
 
       let supportIndex = -1;
       let best = Number.POSITIVE_INFINITY;
       this.records.forEach((other, otherIndex) => {
-        if (otherIndex === index || other.y > record.y + .08) return;
+        if (otherIndex === index || other.y > record.y + .08 || !entryByRecord.has(otherIndex)) return;
         const dx = other.x - record.x;
         const dz = other.z - record.z;
         const dy = Math.max(0, record.y - (other.y + partHeight(other)));
@@ -1964,7 +1987,7 @@ export class BrickStudio {
       });
 
       if (supportIndex < 0) return;
-      const supportEntry = this.physicsEntries[supportIndex];
+      const supportEntry = entryByRecord.get(supportIndex);
       if (!supportEntry) return;
 
       const f = footprint(record);
@@ -1982,7 +2005,7 @@ export class BrickStudio {
         ? new CANNON.Vec3(0, 0, 1)
         : new CANNON.Vec3(1, 0, 0);
 
-      const constraint = new CANNON.HingeConstraint(
+      world.addConstraint(new CANNON.HingeConstraint(
         supportEntry.body,
         hingeEntry.body,
         {
@@ -1992,8 +2015,7 @@ export class BrickStudio {
           axisB: axis,
           collideConnected: false
         }
-      );
-      world.addConstraint(constraint);
+      ));
     });
 
     this.physicsWorld = world;
