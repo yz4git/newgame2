@@ -46,14 +46,15 @@ button.ghost{border-color:#3c4968;background:rgba(10,16,32,.6);color:#9caac6}
 .modal{text-align:center;padding:30px;min-width:min(92vw,420px);background:rgba(4,7,17,.82);border:1px solid #273755;backdrop-filter:blur(12px);box-shadow:0 24px 90px #000}.modal.wide{min-width:min(92vw,650px)}
 .modal h2{font-size:clamp(48px,8vw,100px);margin:15px 0 20px;letter-spacing:-.06em}.modal p{color:#a9b7d1;font:800 12px ui-monospace,monospace;letter-spacing:.06em;margin:0 0 20px}
 .touch-controls{display:none;position:absolute;inset:0;z-index:30;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-.touch-controls button{touch-action:none;border-radius:50%;background:rgba(7,12,27,.46);backdrop-filter:blur(5px);border-color:rgba(255,255,255,.23);padding:0;font-size:10px}
-.touch-move{position:absolute;left:22px;bottom:20px;display:flex;gap:12px}.touch-move button{width:72px;height:72px;font-size:20px}
-.touch-actions{position:absolute;right:18px;bottom:14px;width:294px;height:158px}.touch-actions button{position:absolute;width:70px;height:70px}
-.touch-actions .attack{right:0;bottom:13px;width:86px;height:86px;background:rgba(255,59,212,.16);border-color:rgba(255,59,212,.58)}
-.touch-actions .jump{right:84px;bottom:79px}.touch-actions .dash{right:86px;bottom:0}
-.touch-actions .mini{width:54px;height:54px;font-size:8px}.touch-actions .parry{right:164px;bottom:67px;color:var(--gold);border-color:rgba(255,211,90,.52)}.touch-actions .overdrive{right:161px;bottom:5px;color:var(--cyan)}
+.touch-controls button{touch-action:none;border-radius:50%;background:rgba(7,12,27,.40);backdrop-filter:blur(5px);border-color:rgba(255,255,255,.28);padding:0;font-size:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04),0 8px 28px rgba(0,0,0,.2)}
+.touch-controls button:active{transform:scale(.92);filter:brightness(1.45);box-shadow:0 0 26px rgba(78,247,255,.18)}
+.touch-move{position:absolute;left:20px;bottom:18px;display:flex;gap:8px}.touch-move button{width:84px;height:84px;font-size:22px;background:rgba(12,20,40,.36)}
+.touch-actions{position:absolute;right:16px;bottom:12px;width:320px;height:178px}.touch-actions button{position:absolute;width:76px;height:76px}
+.touch-actions .attack{right:0;bottom:10px;width:96px;height:96px;background:rgba(255,59,212,.18);border-color:rgba(255,59,212,.66);font-size:12px}
+.touch-actions .jump{right:100px;bottom:92px;background:rgba(78,247,255,.11);border-color:rgba(78,247,255,.50)}.touch-actions .dash{right:102px;bottom:0;background:rgba(78,247,255,.08)}
+.touch-actions .mini{width:58px;height:58px;font-size:8px}.touch-actions .parry{right:192px;bottom:78px;color:var(--gold);border-color:rgba(255,211,90,.62);background:rgba(255,211,90,.08)}.touch-actions .overdrive{right:188px;bottom:8px;color:var(--cyan);border-color:rgba(78,247,255,.48)}
 #rotate-gate{display:none;position:absolute;inset:0;z-index:100;place-items:center;text-align:center;background:#04060d;color:#fff;font-weight:950;letter-spacing:.12em}#rotate-gate small{display:block;color:#6f7c98;margin-top:8px;font-weight:700}
-@media(pointer:coarse){.touch-controls{display:block}}
+@media(pointer:coarse){.touch-controls{display:block}.tech-feed{bottom:calc(8px + env(safe-area-inset-bottom));font-size:8px;max-width:44vw;overflow:hidden;text-overflow:ellipsis}.pause-button{width:48px;height:38px}}
 @media(orientation:portrait) and (max-width:900px){#rotate-gate{display:grid}}
-@media(max-height:540px){.touch-move button{width:60px;height:60px}.touch-actions{transform:scale(.86);transform-origin:right bottom}.tech-feed{bottom:8px}.meters{top:44px}}
+@media(max-height:540px){.touch-move button{width:70px;height:70px}.touch-actions{transform:scale(.84);transform-origin:right bottom}.tech-feed{bottom:6px}.meters{top:44px}.combo{top:82px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}.scanlines{display:none}}
