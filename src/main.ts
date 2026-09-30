@@ -196,6 +196,30 @@ ui.innerHTML = `
       </div>
       <button data-action="samples-close">×</button>
     </div>
+    <div class="sample-section-title">DIORAMA SCALE</div>
+    <div class="sample-grid diorama-grid">
+      <button class="sample-card diorama" data-sample="skyport">
+        <b>SKYPORT CITY</b>
+        <span>高架空港・管制塔・サービス街区</span>
+        <em>TERMINAL · TOWER · 16+ WHEELS · GEARS · PROGRAM</em>
+      </button>
+      <button class="sample-card diorama" data-sample="harbor">
+        <b>INDUSTRIAL HARBOR</b>
+        <span>港湾・倉庫・クレーン・貨物ヤード</span>
+        <em>CRANES · CARGO · MOTORS · GEARS · HINGES</em>
+      </button>
+      <button class="sample-card diorama" data-sample="alpine">
+        <b>ALPINE RESCUE BASE</b>
+        <span>山岳基地・橋・格納庫・救難車両</span>
+        <em>BRIDGE · RESCUE ROVER · SUSPENSION · PROGRAM</em>
+      </button>
+      <button class="sample-card diorama" data-sample="megaforge">
+        <b>MEGAFORGE DISTRICT</b>
+        <span>巨大工場街区・ギア壁・搬送ライン</span>
+        <em>FACTORY · GEAR WALL · GATES · TEST LANE</em>
+      </button>
+    </div>
+    <div class="sample-section-title">LARGE VEHICLES & STRUCTURES</div>
     <div class="sample-grid">
       <button class="sample-card" data-sample="titan">
         <b>TITAN HAULER</b>
@@ -508,7 +532,9 @@ ui.querySelector('[data-action="samples"]')?.addEventListener('click', () => set
 ui.querySelector('[data-action="samples-close"]')?.addEventListener('click', () => setSamplesOpen(false));
 ui.querySelectorAll<HTMLButtonElement>('[data-sample]').forEach(button => {
   button.addEventListener('click', () => {
-    const id = button.dataset.sample as 'house' | 'titan' | 'rescue' | 'fortress' | 'explorer';
+    const id = button.dataset.sample as
+      | 'house' | 'titan' | 'rescue' | 'fortress' | 'explorer'
+      | 'skyport' | 'harbor' | 'alpine' | 'megaforge';
     if (studio.loadSample(id)) {
       setSamplesOpen(false);
       showToast(button.querySelector('b')?.textContent + ' LOADED');
