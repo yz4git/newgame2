@@ -37,9 +37,13 @@ A browser-based 3D studded block building simulator rebuilt from scratch for `ne
 - Per-piece rigid bodies with gravity, friction and rotation
 - Hinges form Cannon hinge constraints to nearby support pieces
 - Grab and throw pieces while collapse simulation is running
-- Physics-based DRIVE TEST uses a rigid-body model and arena walls
-- MOTOR increases thrust, GEAR changes performance, PROPELLER adds thrust
-- PROGRAM controller supports Manual, Cruise, Patrol and Spin automation
+- Physics-based DRIVE TEST uses Cannon RaycastVehicle suspension and arena walls
+- Each wheel has independent suspension travel, contact state and visible shock/arm movement
+- Drive-test terrain includes low bumps for suspension testing
+- MOTOR increases thrust, meshed GEAR pairs rotate in opposite directions and alter performance, PROPELLER adds thrust
+- PROGRAM controller supports Manual, Cruise, Patrol and Spin presets
+- Visual Program command sequences can loop MOTOR ON/OFF, Forward/Reverse, Left/Right, Wait and Hinge Open/Close
+- Active visual-program commands and suspension contact count are shown during DRIVE TEST
 - RESTORE/RETURN returns to the editable pre-simulation build
 
 ## Mobile
