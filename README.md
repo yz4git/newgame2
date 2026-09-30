@@ -1,25 +1,54 @@
-# Neon Rift — Browser 2D Action Showcase
+# RIFT//STUDIO
 
-A compact, playable promo for a browser-native 2D action game.
+A browser-native 2D action game rebuilt from scratch as a compact Game Studio-style showcase.
 
-## Showcase goals
+## Stack
 
-- Responsive Canvas 2D rendering with parallax and dynamic screen effects
-- Keyboard, touch, and gamepad input
-- Coyote time, jump buffering, wall slide/jump, air dash
-- 3-hit combo, charged strike, parry, overdrive
-- Hit-stop, camera shake, slow-motion, particles, damage numbers
-- Multiple enemy archetypes and a boss phase
-- Procedural Web Audio SFX and music pulse
-- Local best score, pause, reduced-motion support
-- PWA installability and offline cache
+- Vite + TypeScript
+- Phaser 3 / Arcade Physics
+- DOM-based HUD and touch controls
+- Procedural runtime sprite pipeline
+- Web Audio synthesis
+- Serializable checkpoint state
+- PWA / offline cache
+- GitHub Pages deployment
 
-## Controls
+## Play
 
-Keyboard: A/D move, Space jump, J attack, K dash, L parry, U overdrive, Esc pause.
+Keyboard:
+- A / D or arrow keys: move
+- Space / W: jump
+- J: attack
+- K: dash
+- L: parry
+- U: overdrive
+- Esc: pause
 
-Touch: virtual left/right + JUMP / ATK / DASH / PARRY / OD.
+Gamepad:
+- Left stick / D-pad: move
+- A: jump
+- X: attack
+- B: dash
+- Y: parry
+- RB: overdrive
 
-Gamepad: left stick/D-pad move, A jump, X attack, B dash, Y parry, RB overdrive.
+Touch controls appear automatically on coarse-pointer devices.
 
-Open `index.html` from a static server or GitHub Pages.
+## Showcase structure
+
+1. **Flow Lab** — movement, coyote time, jump buffering, wall movement, hazards.
+2. **Combat Grid** — enemy archetypes, combo chain, knockback, hit stop.
+3. **Reflex Tunnel** — projectiles, timed parry, slow-motion feedback.
+4. **Core Chamber** — multi-phase boss and overdrive payoff.
+
+The lower HUD acts as a live “tech feed,” naming the system currently being demonstrated.
+
+## Development
+
+```bash
+npm install
+npm run dev
+npm run build
+```
+
+GitHub Pages is built from `dist/` by `.github/workflows/pages.yml`.

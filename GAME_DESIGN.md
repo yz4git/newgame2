@@ -1,42 +1,45 @@
-# NEON RIFT — Game Design / Promo Structure
+# RIFT//STUDIO — Design Brief
 
-## Pitch
+## Goal
 
-A 2–4 minute browser-native 2D action showcase. The player runs through four short sectors, and each sector deliberately spotlights a different part of the game feel / browser stack before a multi-phase boss.
+Make the game itself the product demo. The player should experience each capability before the HUD names it.
 
-## Player verbs
+## Design pillars
 
-- Run with acceleration and air control
-- Buffered jump + coyote time
-- Double jump
-- Wall slide / wall jump
-- Air/ground dash with invulnerability frames
-- Three-step melee combo
-- Timed parry
-- Overdrive earned through successful combat
+### 1. Feel first
+Movement uses acceleration, air control, jump buffering and coyote time. Combat adds hit-stop, camera shake, knockback and high-contrast impact effects.
 
-## Showcase flow
+### 2. Browser-native
+Keyboard, gamepad and multi-touch are first-class. The layout respects iPhone safe areas and prevents page zoom/scroll interference.
 
-1. **Flow Lab** — movement readability, parallax, responsive input, wall geometry.
-2. **Combat Grid** — cancel-friendly three-hit combo, hit-stop, knockback, combo score.
-3. **Reflex Tunnel** — ranged threats, parry window, time dilation, damage numbers.
-4. **Core Chamber** — boss phase changes, denser projectiles, overdrive payoff.
+### 3. Systems are visible
+The bottom tech feed calls out important implementation ideas during play: physics, state serialization, combat cancel chains, parry time dilation and boss phases.
 
-## Presentation systems
+### 4. Architecture stays editable
+Phaser scenes, input, audio, UI, persistent state and procedural art generation are separated so each can be iterated independently.
 
-- Fixed 60 Hz simulation
-- Canvas 2D procedural rendering
-- Camera smoothing and impact shake
-- Particles, trails, flashes, floating combat text
-- Reactive HUD and feature callout feed
-- Procedural Web Audio SFX + beat pulse
-- Local best score
-- Reduced-motion support
-- Keyboard, touch, and gamepad input
-- iPhone landscape layout with safe-area handling
-- PWA manifest + service worker cache
-- GitHub Pages deployment workflow
+## Promo route
 
-## Promo principle
+- **Sector 01: Flow Lab** teaches movement and platform traversal.
+- **Sector 02: Combat Grid** introduces multiple enemy behaviors.
+- **Sector 03: Reflex Tunnel** pushes ranged attacks and parry timing.
+- **Sector 04: Core Chamber** combines the systems in a multi-phase boss fight.
 
-The player should not read a feature list first. Each feature should be demonstrated by an interaction, then named briefly in the bottom “tech feed” as it happens.
+## Feature matrix
+
+| Area | Demonstrated capability |
+| --- | --- |
+| Framework | Phaser 3 + TypeScript + Vite |
+| Physics | Arcade Physics, static geometry, hazards, projectiles |
+| Movement | Coyote time, jump buffer, wall jump, dash |
+| Combat | 3-step chain, knockback, hit-stop, invulnerability |
+| Defense | Parry window, stun, time dilation |
+| AI | Runner, guard, drone, sniper, 3-phase boss |
+| Rendering | Parallax tile layers, camera follow, tint/flash, procedural textures |
+| FX | Runtime particles, trails, floating damage text |
+| Audio | Procedural Web Audio SFX and music pulse |
+| UI | DOM HUD, pause/result/title panels |
+| Input | Keyboard, touch, gamepad |
+| State | Local checkpoint serialization and best score |
+| Web | Responsive scaling, safe-area support, PWA, service worker |
+| Deploy | Automated GitHub Pages build |
