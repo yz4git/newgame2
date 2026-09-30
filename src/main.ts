@@ -183,10 +183,48 @@ ui.innerHTML = `
       <span class="selection-count"></span>
     </div>
     <div class="footer-actions">
-      <button data-action="demo">SAMPLE HOUSE</button>
+      <button data-action="samples">SAMPLE GALLERY</button>
       <button data-action="clear" class="danger-text">CLEAR</button>
     </div>
   </footer>
+
+  <aside class="sample-panel" aria-hidden="true">
+    <div class="sample-head">
+      <div>
+        <small>INTEGRATED SHOWCASES</small>
+        <strong>LARGE SAMPLE GALLERY</strong>
+      </div>
+      <button data-action="samples-close">×</button>
+    </div>
+    <div class="sample-grid">
+      <button class="sample-card" data-sample="titan">
+        <b>TITAN HAULER</b>
+        <span>大型16輪トランスポーター</span>
+        <em>WHEELS · MOTOR · GEAR · PROP · PROGRAM · HINGE</em>
+      </button>
+      <button class="sample-card" data-sample="rescue">
+        <b>RESCUE COMMAND</b>
+        <span>多関節レスキュー車両</span>
+        <em>SUSPENSION · DOORS · GEARS · PROGRAM</em>
+      </button>
+      <button class="sample-card" data-sample="fortress">
+        <b>GEARWORKS FORTRESS</b>
+        <span>大型機械要塞 / 崩壊デモ向け</span>
+        <em>GEAR TRAIN · HINGES · COLLAPSE · PROP</em>
+      </button>
+      <button class="sample-card" data-sample="explorer">
+        <b>POWER EXPLORER</b>
+        <span>高密度プログラム実験車</span>
+        <em>MOTOR · GEAR · PROP · VISUAL PROGRAM</em>
+      </button>
+      <button class="sample-card compact" data-sample="house">
+        <b>STARTER HOUSE</b>
+        <span>基本建築サンプル</span>
+        <em>WINDOW · ROOF · HINGE · SLOPE</em>
+      </button>
+    </div>
+    <p>サンプル読込後は、SELECT / COPY / DRIVE TEST / COLLAPSE / SAVE SLOT をそのまま使用できます。</p>
+  </aside>
 
   <div class="hint">BUILD: tap place · SELECT: multi-select · MOVE: drag selected · DRAG empty: orbit · PINCH: zoom</div>
   <div class="toast" aria-live="polite"></div>
@@ -460,9 +498,24 @@ ui.querySelectorAll<HTMLButtonElement>('[data-drive-steer]').forEach(button => {
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(name => button.addEventListener(name, end));
 });
 
-ui.querySelector('[data-action="demo"]')?.addEventListener('click', () => {
-  studio.demoHouse();
-  showToast('SAMPLE HOUSE BUILT');
+const samplePanel = ui.querySelector('.sample-panel') as HTMLElement;
+const setSamplesOpen = (open: boolean): void => {
+  ui.classList.toggle('samples-open', open);
+  samplePanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+};
+
+ui.querySelector('[data-action="samples"]')?.addEventListener('click', () => setSamplesOpen(true));
+ui.querySelector('[data-action="samples-close"]')?.addEventListener('click', () => setSamplesOpen(false));
+ui.querySelectorAll<HTMLButtonElement>('[data-sample]').forEach(button => {
+  button.addEventListener('click', () => {
+    const id = button.dataset.sample as 'house' | 'titan' | 'rescue' | 'fortress' | 'explorer';
+    if (studio.loadSample(id)) {
+      setSamplesOpen(false);
+      showToast(button.querySelector('b')?.textContent + ' LOADED');
+    } else {
+      showToast('STOP SIMULATION FIRST');
+    }
+  });
 });
 ui.querySelector('[data-action="clear"]')?.addEventListener('click', () => {
   if (studio.pieceCount === 0 || studio.physicsActive) return;
