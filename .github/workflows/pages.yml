@@ -1,28 +1,114 @@
 name: Deploy RIFT STUDIO
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - run: npm run build
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Vite production
+        run: npm run build
+
+      - name: Stamp Pages build identity
+        env:
+          BUILD_ID: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          build_id = os.environ["BUILD_ID"]
+          dist = Path("dist")
+          version = {
+              "buildId": build_id,
+              "deployedAt": datetime.now(timezone.utc).isoformat(),
+          }
+          (dist / "version.json").write_text(
+              json.dumps(version, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+
+          latest = f"""<!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width,initial-scale=1">
+              <meta name="robots" content="noindex">
+              <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+              <meta http-equiv="Pragma" content="no-cache">
+              <meta http-equiv="Expires" content="0">
+              <title>RIFT//STUDIO · Latest</title>
+            </head>
+            <body style="background:#050712;color:#eef7ff;font:16px system-ui;padding:24px">
+              <p>Opening the latest RIFT//STUDIO build…</p>
+              <script>
+                (async () => {{
+                  try {{
+                    if ('serviceWorker' in navigator) {{
+                      const regs = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all(regs
+                        .filter((reg) => reg.scope.includes('/newgame2/'))
+                        .map((reg) => reg.unregister()));
+                    }}
+                    if ('caches' in window) {{
+                      const keys = await caches.keys();
+                      await Promise.all(keys
+                        .filter((key) => key.startsWith('rift-studio-'))
+                        .map((key) => caches.delete(key)));
+                    }}
+                  }} catch {{}}
+                  location.replace('./?__build={build_id}');
+                }})();
+              </script>
+            </body>
+          </html>
+          """
+          (dist / "latest.html").write_text(latest, encoding="utf-8")
+          PY
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
         with:
-          path: dist
-      - id: deployment
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
