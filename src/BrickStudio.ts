@@ -715,43 +715,193 @@ export class BrickStudio {
     return true;
   }
 
-  demoHouse(): void {
-    if (this.physicsActive || this.driveActive) return;
+  loadSample(sampleId: 'house' | 'titan' | 'rescue' | 'fortress' | 'explorer'): boolean {
+    if (this.physicsActive || this.driveActive) return false;
     this.pushHistory();
-    const red = 0xe53935;
-    const blue = 0x1e6bd6;
-    const white = 0xf4f5f7;
-    const dark = 0x30343b;
+
+    const C = {
+      red: 0xe53935,
+      blue: 0x1e6bd6,
+      yellow: 0xf5c62b,
+      green: 0x2f9e55,
+      orange: 0xf57c21,
+      white: 0xf4f5f7,
+      black: 0x30343b,
+      gray: 0x7b8797,
+      cyan: 0x32b9d8
+    };
+
     const list: BrickRecord[] = [];
-
     const add = (
-      kind: PartKind, w: number, d: number, x: number, y: number, z: number,
-      color: number, rotation: 0 | 1 = 0
-    ) => list.push({ kind, w, d, x, y, z, color, rotation });
+      kind: PartKind, w: number, d: number,
+      x: number, y: number, z: number, color: number,
+      rotation: 0 | 1 = 0,
+      extras: Partial<BrickSpec> = {}
+    ): void => {
+      list.push({ kind, w, d, x, y, z, color, rotation, ...extras });
+    };
 
-    for (let x = -2.4; x <= 2.4; x += 1.6) {
-      add('brick', 2, 4, x, 0, -2.4, dark);
-      add('brick', 2, 4, x, 0, 2.4, dark);
-      add('brick', 2, 4, x, BODY_H, -2.4, red);
-      add('brick', 2, 4, x, BODY_H, 2.4, red);
-    }
-    for (const x of [-2.4, 2.4]) {
-      for (const z of [-.8, .8]) {
-        add('brick', 2, 4, x, BODY_H, z, red, 1);
+    const brickLineX = (z: number, y: number, color: number, from = -4.8, to = 4.8): void => {
+      for (let x = from; x <= to + .01; x += 1.6) add('brick', 2, 4, x, y, z, color);
+    };
+    const brickLineZ = (x: number, y: number, color: number, from = -4.8, to = 4.8): void => {
+      for (let z = from; z <= to + .01; z += 1.6) add('brick', 2, 4, x, y, z, color, 1);
+    };
+
+    if (sampleId === 'house') {
+      brickLineX(-2.4, 0, C.black, -2.4, 2.4);
+      brickLineX(2.4, 0, C.black, -2.4, 2.4);
+      brickLineX(-2.4, BODY_H, C.red, -2.4, 2.4);
+      brickLineX(2.4, BODY_H, C.red, -2.4, 2.4);
+      for (const x of [-2.4, 2.4]) {
+        for (const z of [-.8, .8]) add('brick', 2, 4, x, BODY_H, z, C.red, 1);
       }
+      add('window', 2, 1, -2.4, BODY_H * 2, 0, C.white, 1);
+      add('window', 2, 1, 2.4, BODY_H * 2, 0, C.white, 1);
+      add('hinge', 2, 2, 0, BODY_H * 2, 2.4, C.blue, 0, { hingeAngle: 55 });
+      add('slope', 2, 2, -1.2, BODY_H * 2, -2.4, C.blue);
+      add('slope', 2, 2, 1.2, BODY_H * 2, -2.4, C.blue, 1);
+      add('roof', 2, 4, -1.6, BODY_H * 3.4, 0, C.blue);
+      add('roof', 2, 4, 1.6, BODY_H * 3.4, 0, C.blue);
     }
-    add('window', 2, 1, -2.4, BODY_H * 2, 0, white, 1);
-    add('window', 2, 1, 2.4, BODY_H * 2, 0, white, 1);
-    add('hinge', 2, 2, 0, BODY_H * 2, 2.4, blue);
-    add('slope', 2, 2, -1.2, BODY_H * 2, -2.4, blue);
-    add('slope', 2, 2, 1.2, BODY_H * 2, -2.4, blue, 1);
-    add('roof', 2, 4, -1.6, BODY_H * 3.4, 0, blue);
-    add('roof', 2, 4, 1.6, BODY_H * 3.4, 0, blue);
+
+    if (sampleId === 'titan') {
+      // TITAN HAULER: long heavy vehicle, 8 wheel modules / 16 visual wheels.
+      for (const z of [-4.8, -3.2, -1.6, 0, 1.6, 3.2, 4.8]) {
+        for (const x of [-2.4, -.8, .8, 2.4]) add('brick', 2, 4, x, BODY_H * .7, z, C.black);
+      }
+      for (const z of [-4.8, -1.6, 1.6, 4.8]) {
+        add('wheel', 2, 2, 0, 0, z, C.black);
+      }
+      for (const x of [-1.6, 1.6]) {
+        add('motor', 2, 2, x, BODY_H * 1.7, 2.4, C.red);
+        add('motor', 2, 2, x, BODY_H * 1.7, -2.4, C.red);
+      }
+      for (const x of [-2.4, -.8, .8, 2.4]) {
+        add('gear', 2, 2, x, BODY_H * 2.9, 1.6, C.yellow);
+      }
+      brickLineX(-3.8, BODY_H * 2.9, C.blue, -3.2, 3.2);
+      brickLineX(3.8, BODY_H * 2.9, C.blue, -3.2, 3.2);
+      for (const x of [-3.2, 3.2]) {
+        add('window', 2, 1, x, BODY_H * 4.0, -2.2, C.white, 1);
+        add('window', 2, 1, x, BODY_H * 4.0, 2.2, C.white, 1);
+      }
+      add('slope', 2, 4, 0, BODY_H * 3.0, -5.0, C.orange);
+      add('slope', 2, 4, -1.6, BODY_H * 3.0, -5.0, C.orange);
+      add('slope', 2, 4, 1.6, BODY_H * 3.0, -5.0, C.orange);
+      add('hinge', 2, 2, -2.4, BODY_H * 4.0, 4.8, C.orange, 0, { hingeAngle: 70 });
+      add('hinge', 2, 2, 2.4, BODY_H * 4.0, 4.8, C.orange, 0, { hingeAngle: 70 });
+      add('propeller', 2, 2, -2.4, BODY_H * 5.2, 4.6, C.cyan);
+      add('propeller', 2, 2, 2.4, BODY_H * 5.2, 4.6, C.cyan);
+      add('program', 2, 2, 0, BODY_H * 4.1, -1.0, C.white, 0, {
+        programMode: 'manual',
+        programSteps: [
+          'motorOn','forward','forward','left','forward',
+          'right','hingeOpen','wait','hingeClose','forward'
+        ]
+      });
+      for (const x of [-2.4, 0, 2.4]) add('roof', 2, 4, x, BODY_H * 5.8, -.8, C.blue);
+    }
+
+    if (sampleId === 'rescue') {
+      // RESCUE COMMAND: articulated rescue truck with multiple programmable doors.
+      for (const z of [-4.0, -2.4, -.8, .8, 2.4, 4.0]) {
+        for (const x of [-1.6, 0, 1.6]) add('brick', 2, 4, x, BODY_H * .7, z, C.gray);
+      }
+      for (const z of [-3.6, -.4, 2.8]) add('wheel', 2, 2, 0, 0, z, C.black);
+      add('motor', 2, 2, -1.2, BODY_H * 1.7, 1.6, C.red);
+      add('motor', 2, 2, 1.2, BODY_H * 1.7, 1.6, C.red);
+      for (const x of [-1.6, 0, 1.6]) {
+        add('gear', 2, 2, x, BODY_H * 2.8, 2.4, C.yellow);
+      }
+      for (const z of [-3.2, -1.6, 0, 1.6]) {
+        add('window', 2, 1, -2.4, BODY_H * 3.0, z, C.cyan, 1);
+        add('window', 2, 1, 2.4, BODY_H * 3.0, z, C.cyan, 1);
+      }
+      for (const z of [-2.4, 0, 2.4]) {
+        add('hinge', 2, 2, -2.4, BODY_H * 4.4, z, C.orange, 1, { hingeAngle: 30 });
+        add('hinge', 2, 2, 2.4, BODY_H * 4.4, z, C.orange, 1, { hingeAngle: 30 });
+      }
+      add('slope', 2, 4, -1.2, BODY_H * 2.9, -4.8, C.white);
+      add('slope', 2, 4, 1.2, BODY_H * 2.9, -4.8, C.white);
+      add('propeller', 2, 2, 0, BODY_H * 5.4, 4.4, C.red);
+      add('program', 2, 2, 0, BODY_H * 4.0, -1.2, C.white, 0, {
+        programSteps: [
+          'motorOn','forward','left','wait','hingeOpen',
+          'wait','hingeClose','right','forward'
+        ]
+      });
+      for (const x of [-1.6, 0, 1.6]) add('roof', 2, 4, x, BODY_H * 6.0, .4, C.red);
+    }
+
+    if (sampleId === 'fortress') {
+      // GEARWORKS FORTRESS: dense structure designed for gear animation + collapse.
+      for (const yLayer of [0, 1, 2]) {
+        const y = BODY_H * yLayer;
+        brickLineX(-5.6, y, yLayer % 2 ? C.gray : C.black, -5.6, 5.6);
+        brickLineX(5.6, y, yLayer % 2 ? C.gray : C.black, -5.6, 5.6);
+        brickLineZ(-5.6, y, yLayer % 2 ? C.gray : C.black, -4.0, 4.0);
+        brickLineZ(5.6, y, yLayer % 2 ? C.gray : C.black, -4.0, 4.0);
+      }
+      for (const x of [-4.8, -3.2, -1.6, 0, 1.6, 3.2, 4.8]) {
+        add('gear', 2, 2, x, BODY_H * 3.2, 0, C.yellow);
+      }
+      add('motor', 2, 2, -4.8, BODY_H * 4.4, 0, C.red);
+      add('motor', 2, 2, 4.8, BODY_H * 4.4, 0, C.red);
+      for (const x of [-4.8, -2.4, 0, 2.4, 4.8]) {
+        add('window', 2, 1, x, BODY_H * 4.4, -5.2, C.cyan);
+        add('window', 2, 1, x, BODY_H * 4.4, 5.2, C.cyan);
+      }
+      for (const x of [-4.8, 4.8]) {
+        for (const z of [-4.8, 0, 4.8]) {
+          add('hinge', 2, 2, x, BODY_H * 5.6, z, C.orange, 1, { hingeAngle: 75 });
+        }
+      }
+      for (const x of [-4.0, 0, 4.0]) {
+        add('propeller', 2, 2, x, BODY_H * 6.7, 0, C.red);
+        add('roof', 2, 4, x, BODY_H * 7.5, 0, C.blue);
+      }
+      add('program', 2, 2, 0, BODY_H * 5.6, -2.4, C.white, 0, {
+        programSteps: ['motorOn','hingeOpen','wait','hingeClose','wait']
+      });
+      add('wheel', 2, 2, 0, 0, -4.8, C.black);
+      add('wheel', 2, 2, 0, 0, 4.8, C.black);
+    }
+
+    if (sampleId === 'explorer') {
+      // POWER EXPLORER: compact but dense programmable testbed.
+      for (const z of [-3.2, -1.6, 0, 1.6, 3.2]) {
+        for (const x of [-2.4, -.8, .8, 2.4]) add('brick', 2, 4, x, BODY_H * .7, z, C.blue);
+      }
+      for (const z of [-3.0, 0, 3.0]) add('wheel', 2, 2, 0, 0, z, C.black);
+      for (const x of [-1.6, 1.6]) {
+        add('motor', 2, 2, x, BODY_H * 1.7, 1.6, C.red);
+        add('propeller', 2, 2, x, BODY_H * 3.1, 3.0, C.cyan);
+      }
+      for (const x of [-2.4, -.8, .8, 2.4]) add('gear', 2, 2, x, BODY_H * 2.9, 0, C.yellow);
+      add('window', 2, 1, -1.2, BODY_H * 3.0, -2.4, C.white);
+      add('window', 2, 1, 1.2, BODY_H * 3.0, -2.4, C.white);
+      add('hinge', 2, 2, -2.4, BODY_H * 4.2, 1.6, C.orange, 1, { hingeAngle: 40 });
+      add('hinge', 2, 2, 2.4, BODY_H * 4.2, 1.6, C.orange, 1, { hingeAngle: 40 });
+      add('slope', 2, 4, 0, BODY_H * 3.0, -3.6, C.orange);
+      add('program', 2, 2, 0, BODY_H * 4.0, -.4, C.white, 0, {
+        programSteps: [
+          'motorOn','forward','left','forward','right',
+          'hingeOpen','wait','reverse','hingeClose','forward'
+        ]
+      });
+      for (const x of [-1.6, 1.6]) add('roof', 2, 4, x, BODY_H * 5.2, 0, C.white);
+    }
 
     this.restore(list);
-    this.orbitTarget.set(0, 1.4, 0);
-    this.distance = 15;
+    this.orbitTarget.set(0, sampleId === 'fortress' ? 2.1 : 1.5, 0);
+    this.distance = sampleId === 'fortress' ? 18.5 : sampleId === 'titan' ? 17.0 : 15.5;
     this.updateCamera();
+    return true;
+  }
+
+  demoHouse(): void {
+    this.loadSample('house');
   }
 
   startInstructions(modelId = this.instructionModelId): void {
