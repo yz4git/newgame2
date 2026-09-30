@@ -35,10 +35,25 @@ interface InstructionStep {
   record: BrickRecord;
 }
 
+interface InstructionModel {
+  id: string;
+  label: string;
+  steps: InstructionStep[];
+}
+
 interface PhysicsEntry {
   body: CANNON.Body;
   mesh: THREE.Group;
   height: number;
+}
+
+interface PhysicsGrab {
+  pointerId: number;
+  entry: PhysicsEntry;
+  distance: number;
+  lastPoint: THREE.Vector3;
+  lastAt: number;
+  throwVelocity: THREE.Vector3;
 }
 
 const slotKey = (slot: number): string => `brick-lab-slot-${slot}-v2`;
@@ -75,6 +90,8 @@ export class BrickStudio {
   private lastTapMoved = false;
   private dragSelection: DragSelection | null = null;
 
+  private instructionModels: Record<string, InstructionModel> = {};
+  private instructionModelId = 'rover';
   private instructionSteps: InstructionStep[] = [];
   private instructionStep = 0;
   private instructionGhost?: THREE.Group;
@@ -83,6 +100,13 @@ export class BrickStudio {
   private physicsWorld?: CANNON.World;
   private physicsEntries: PhysicsEntry[] = [];
   private physicsSnapshot?: BrickRecord[];
+  private physicsGrab?: PhysicsGrab;
+
+  private driveActiveState = false;
+  private driveThrottle = 0;
+  private driveSteer = 0;
+  private driveWheelSpin = 0;
+
   private lastFrame = performance.now();
 
   private onChange?: (studio: BrickStudio) => void;
@@ -110,7 +134,7 @@ export class BrickStudio {
     this.buildLighting();
     this.buildBaseplate();
     this.buildBackdrop();
-    this.buildInstructionSteps();
+    this.buildInstructionModels();
 
     this.ghost = createPart(this.selected, 0.46);
     this.setGhostMaterial(false);
@@ -127,13 +151,23 @@ export class BrickStudio {
   get currentSpec(): BrickSpec { return cloneSpec(this.selected); }
   get selectionCount(): number { return this.selectedIds.size; }
   get physicsActive(): boolean { return Boolean(this.physicsWorld); }
-  get instructionStatus(): { active: boolean; step: number; total: number; label: string } {
+  get driveActive(): boolean { return this.driveActiveState; }
+  get wheelCount(): number { return this.records.filter(record => record.kind === 'wheel').length; }
+  get instructionChoices(): { id: string; label: string; steps: number }[] {
+    return Object.values(this.instructionModels).map(model => ({
+      id: model.id,
+      label: model.label,
+      steps: model.steps.length
+    }));
+  }
+  get instructionStatus(): { active: boolean; step: number; total: number; label: string; model: string } {
     const step = this.instructionSteps[this.instructionStep];
     return {
       active: this.mode === 'instruction',
       step: Math.min(this.instructionStep + 1, this.instructionSteps.length),
       total: this.instructionSteps.length,
-      label: step?.label ?? 'COMPLETE'
+      label: step?.label ?? 'COMPLETE',
+      model: this.instructionModels[this.instructionModelId]?.label ?? 'GUIDED BUILD'
     };
   }
 
