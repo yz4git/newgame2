@@ -218,17 +218,6 @@ export class BrickStudio {
   get suspensionWheelCount(): number {
     return this.driveVehicle?.wheelInfos.length ?? this.wheelCount * 2;
   }
-  get suspensionDebug(): string {
-    if (!this.driveVehicle) return '';
-    return this.driveVehicle.wheelInfos.map((wheel, index) =>
-      `${index}:${wheel.isInContact ? 1 : 0}:${wheel.suspensionLength.toFixed(3)}` +
-      `@${wheel.chassisConnectionPointWorld.x.toFixed(2)},${wheel.chassisConnectionPointWorld.y.toFixed(2)},${wheel.chassisConnectionPointWorld.z.toFixed(2)}` +
-      `d${wheel.directionWorld.x.toFixed(2)},${wheel.directionWorld.y.toFixed(2)},${wheel.directionWorld.z.toFixed(2)}` +
-      (wheel.raycastResult.body
-        ? `b${wheel.raycastResult.body.position.x.toFixed(1)},${wheel.raycastResult.body.position.y.toFixed(1)},${wheel.raycastResult.body.position.z.toFixed(1)}`
-        : 'b-')
-    ).join('|');
-  }
   get meshedGearPairs(): number {
     let pairs = 0;
     const gears = this.records
