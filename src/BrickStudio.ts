@@ -695,9 +695,15 @@ export class BrickStudio {
     this.canvas.style.touchAction = 'none';
 
     this.canvas.addEventListener('pointerdown', event => {
-      if (this.physicsActive || this.mode === 'instruction') return;
+      if (this.mode === 'instruction' || this.driveActive) return;
       this.canvas.setPointerCapture(event.pointerId);
       this.updatePointerNdc(event.clientX, event.clientY);
+
+      if (this.physicsActive) {
+        const id = this.partIdAtPointer();
+        if (id !== null) this.beginPhysicsGrab(id, event.pointerId);
+        return;
+      }
 
       const info: PointerInfo = {
         x: event.clientX, y: event.clientY,
@@ -741,7 +747,16 @@ export class BrickStudio {
     });
 
     this.canvas.addEventListener('pointermove', event => {
-      if (this.physicsActive || this.mode === 'instruction') return;
+      if (this.mode === 'instruction' || this.driveActive) return;
+
+      if (this.physicsActive) {
+        if (this.physicsGrab?.pointerId === event.pointerId) {
+          this.updatePointerNdc(event.clientX, event.clientY);
+          this.updatePhysicsGrab();
+        }
+        return;
+      }
+
       const info = this.pointers.get(event.pointerId);
       if (!info) {
         this.updatePointerNdc(event.clientX, event.clientY);
@@ -779,6 +794,11 @@ export class BrickStudio {
     });
 
     const release = (event: PointerEvent) => {
+      if (this.physicsActive) {
+        if (this.physicsGrab?.pointerId === event.pointerId) this.endPhysicsGrab();
+        return;
+      }
+
       const info = this.pointers.get(event.pointerId);
       if (!info) return;
       const wasTap = !this.lastTapMoved && Math.hypot(event.clientX - info.startX, event.clientY - info.startY) < 8;
@@ -794,7 +814,7 @@ export class BrickStudio {
       this.pointers.delete(event.pointerId);
       if (this.pointers.size < 2) this.pinchDistance = 0;
 
-      if (wasTap && !this.physicsActive) {
+      if (wasTap) {
         this.updatePointerNdc(event.clientX, event.clientY);
         if (this.mode === 'remove') this.removeAtPointer();
         else if (this.mode === 'select') this.toggleSelectionAtPointer();
@@ -810,6 +830,63 @@ export class BrickStudio {
       this.distance = THREE.MathUtils.clamp(this.distance * Math.exp(event.deltaY * 0.001), 5.8, 31);
       this.updateCamera();
     }, { passive: false });
+  }
+
+  private beginPhysicsGrab(index: number, pointerId: number): void {
+    const entry = this.physicsEntries[index];
+    if (!entry) return;
+    const worldPos = entry.mesh.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, entry.height / 2, 0));
+    entry.body.type = CANNON.Body.KINEMATIC;
+    entry.body.velocity.set(0, 0, 0);
+    entry.body.angularVelocity.set(0, 0, 0);
+    entry.body.wakeUp();
+    this.physicsGrab = {
+      pointerId,
+      entry,
+      distance: THREE.MathUtils.clamp(this.camera.position.distanceTo(worldPos), 2.5, 28),
+      lastPoint: worldPos,
+      lastAt: performance.now(),
+      throwVelocity: new THREE.Vector3()
+    };
+  }
+
+  private updatePhysicsGrab(): void {
+    const grab = this.physicsGrab;
+    if (!grab) return;
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    const target = this.raycaster.ray.origin.clone()
+      .add(this.raycaster.ray.direction.clone().multiplyScalar(grab.distance));
+    target.y = Math.max(grab.entry.height / 2 + .05, target.y);
+
+    const now = performance.now();
+    const dt = Math.max(.008, (now - grab.lastAt) / 1000);
+    grab.throwVelocity.copy(target).sub(grab.lastPoint).multiplyScalar(1 / dt);
+    if (grab.throwVelocity.length() > 11) grab.throwVelocity.setLength(11);
+    grab.lastPoint.copy(target);
+    grab.lastAt = now;
+
+    grab.entry.body.position.set(target.x, target.y, target.z);
+    grab.entry.body.velocity.set(0, 0, 0);
+    grab.entry.body.angularVelocity.set(0, 0, 0);
+  }
+
+  private endPhysicsGrab(): void {
+    const grab = this.physicsGrab;
+    if (!grab) return;
+    grab.entry.body.type = CANNON.Body.DYNAMIC;
+    grab.entry.body.updateMassProperties();
+    grab.entry.body.velocity.set(
+      grab.throwVelocity.x * 1.08,
+      grab.throwVelocity.y * 1.08,
+      grab.throwVelocity.z * 1.08
+    );
+    grab.entry.body.angularVelocity.set(
+      grab.throwVelocity.z * .16,
+      grab.throwVelocity.x * .10,
+      -grab.throwVelocity.x * .16
+    );
+    grab.entry.body.wakeUp();
+    this.physicsGrab = undefined;
   }
 
   private updatePointerNdc(clientX: number, clientY: number): void {
@@ -1145,6 +1222,7 @@ export class BrickStudio {
   }
 
   private restoreCollapse(): void {
+    if (this.physicsGrab) this.endPhysicsGrab();
     this.physicsWorld = undefined;
     this.physicsEntries = [];
     if (this.physicsSnapshot) {
@@ -1175,6 +1253,37 @@ export class BrickStudio {
     }
   }
 
+  private updateDrive(delta: number): void {
+    if (!this.driveActiveState) return;
+
+    const steeringRate = 1.25 * (0.25 + Math.abs(this.driveThrottle) * .75);
+    this.brickLayer.rotation.y += this.driveSteer * steeringRate * delta;
+    const speed = this.driveThrottle * 3.15;
+    const yaw = this.brickLayer.rotation.y;
+    this.brickLayer.position.x += Math.sin(yaw) * speed * delta;
+    this.brickLayer.position.z -= Math.cos(yaw) * speed * delta;
+
+    const radius = Math.hypot(this.brickLayer.position.x, this.brickLayer.position.z);
+    if (radius > 13) {
+      const scale = 13 / radius;
+      this.brickLayer.position.x *= scale;
+      this.brickLayer.position.z *= scale;
+    }
+
+    this.driveWheelSpin += this.driveThrottle * delta * 8.5;
+    this.records.forEach((record, index) => {
+      if (record.kind !== 'wheel') return;
+      const group = this.brickLayer.children[index];
+      group?.traverse(object => {
+        if (object.userData.partRole === 'wheel') object.rotation.z = this.driveWheelSpin;
+      });
+    });
+
+    this.orbitTarget.x = this.brickLayer.position.x;
+    this.orbitTarget.z = this.brickLayer.position.z;
+    this.updateCamera();
+  }
+
   private updateCamera(): void {
     const sin = Math.sin(this.polar);
     this.camera.position.set(
@@ -1192,6 +1301,7 @@ export class BrickStudio {
     this.lastFrame = now;
 
     this.updatePhysics(delta);
+    this.updateDrive(delta);
     if (this.instructionGhost) {
       const t = now * .006;
       const pulse = 1 + Math.sin(t) * .045;
