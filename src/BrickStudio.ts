@@ -172,7 +172,7 @@ export class BrickStudio {
   }
 
   setSpec(next: Partial<BrickSpec>): void {
-    if (this.physicsActive) return;
+    if (this.physicsActive || this.driveActive) return;
     this.selected = { ...this.selected, ...next };
     this.mode = 'build';
     this.selectedIds.clear();
@@ -219,7 +219,7 @@ export class BrickStudio {
   }
 
   paintSelection(color: number): boolean {
-    if (this.physicsActive || !this.selectedIds.size) return false;
+    if (this.physicsActive || this.driveActive || !this.selectedIds.size) return false;
     this.pushHistory();
     for (const id of this.selectedIds) {
       const record = this.records[id];
@@ -230,8 +230,62 @@ export class BrickStudio {
     return true;
   }
 
+  adjustSelectedHinges(deltaDegrees: number): boolean {
+    if (this.physicsActive || this.driveActive || !this.selectedIds.size) return false;
+    const hingeIds = [...this.selectedIds].filter(id => this.records[id]?.kind === 'hinge');
+    if (!hingeIds.length) return false;
+    this.pushHistory();
+    for (const id of hingeIds) {
+      const record = this.records[id];
+      record.hingeAngle = THREE.MathUtils.clamp((record.hingeAngle ?? 35) + deltaDegrees, 0, 110);
+    }
+    this.rebuildAll();
+    this.notify();
+    return true;
+  }
+
+  toggleDrive(): boolean {
+    if (this.physicsActive || this.mode === 'instruction') return false;
+    if (this.driveActiveState) {
+      this.stopDrive(true);
+      return true;
+    }
+    if (this.wheelCount < 2 || !this.records.length) return false;
+    this.selectedIds.clear();
+    this.refreshSelectionVisual();
+    this.ghost.visible = false;
+    this.driveActiveState = true;
+    this.driveThrottle = 0;
+    this.driveSteer = 0;
+    this.driveWheelSpin = 0;
+    this.brickLayer.position.set(0, 0, 0);
+    this.brickLayer.rotation.set(0, 0, 0);
+    this.notify();
+    return true;
+  }
+
+  setDriveControl(throttle: number, steer: number): void {
+    if (!this.driveActiveState) return;
+    this.driveThrottle = THREE.MathUtils.clamp(throttle, -1, 1);
+    this.driveSteer = THREE.MathUtils.clamp(steer, -1, 1);
+  }
+
+  stopDrive(reset = true): void {
+    if (!this.driveActiveState) return;
+    this.driveActiveState = false;
+    this.driveThrottle = 0;
+    this.driveSteer = 0;
+    if (reset) {
+      this.brickLayer.position.set(0, 0, 0);
+      this.brickLayer.rotation.set(0, 0, 0);
+      this.rebuildAll();
+    }
+    this.ghost.visible = this.mode === 'build';
+    this.notify();
+  }
+
   setMode(mode: Mode): void {
-    if (this.physicsActive) return;
+    if (this.physicsActive || this.driveActive) return;
     if (this.mode === 'instruction' && mode !== 'instruction') this.stopInstructions(true);
     this.mode = mode;
     if (mode !== 'select' && mode !== 'move') {
@@ -243,7 +297,7 @@ export class BrickStudio {
   }
 
   undo(): void {
-    if (this.physicsActive || this.mode === 'instruction') return;
+    if (this.physicsActive || this.driveActive || this.mode === 'instruction') return;
     const prev = this.undoStack.pop();
     if (!prev) return;
     this.redoStack.push(this.snapshot());
@@ -251,7 +305,7 @@ export class BrickStudio {
   }
 
   redo(): void {
-    if (this.physicsActive || this.mode === 'instruction') return;
+    if (this.physicsActive || this.driveActive || this.mode === 'instruction') return;
     const next = this.redoStack.pop();
     if (!next) return;
     this.undoStack.push(this.snapshot());
@@ -259,7 +313,7 @@ export class BrickStudio {
   }
 
   saveSlot(slot: number): boolean {
-    if (this.physicsActive) return false;
+    if (this.physicsActive || this.driveActive) return false;
     try {
       localStorage.setItem(slotKey(slot), JSON.stringify({
         version: 2,
@@ -274,7 +328,7 @@ export class BrickStudio {
   }
 
   loadSlot(slot: number): boolean {
-    if (this.physicsActive) return false;
+    if (this.physicsActive || this.driveActive) return false;
     try {
       const raw = localStorage.getItem(slotKey(slot));
       if (!raw) return false;
@@ -301,7 +355,7 @@ export class BrickStudio {
   }
 
   clear(): void {
-    if (this.physicsActive || !this.records.length) return;
+    if (this.physicsActive || this.driveActive || !this.records.length) return;
     this.pushHistory();
     this.restore([]);
   }
@@ -315,7 +369,7 @@ export class BrickStudio {
   }
 
   selectAll(): void {
-    if (this.physicsActive) return;
+    if (this.physicsActive || this.driveActive) return;
     this.mode = 'select';
     this.selectedIds = new Set(this.records.map((_, i) => i));
     this.refreshSelectionVisual();
@@ -329,7 +383,7 @@ export class BrickStudio {
   }
 
   copySelection(): boolean {
-    if (this.physicsActive || !this.selectedIds.size) return false;
+    if (this.physicsActive || this.driveActive || !this.selectedIds.size) return false;
     const source = [...this.selectedIds].map(id => this.records[id]).filter(Boolean);
     if (!source.length) return false;
 
@@ -353,7 +407,7 @@ export class BrickStudio {
   }
 
   liftSelection(layers: number): boolean {
-    if (this.physicsActive || !this.selectedIds.size) return false;
+    if (this.physicsActive || this.driveActive || !this.selectedIds.size) return false;
     const dy = BODY_H * layers;
     const copies = this.records.map(r => ({ ...r }));
     for (const id of this.selectedIds) {
@@ -371,7 +425,7 @@ export class BrickStudio {
   }
 
   demoHouse(): void {
-    if (this.physicsActive) return;
+    if (this.physicsActive || this.driveActive) return;
     this.pushHistory();
     const red = 0xe53935;
     const blue = 0x1e6bd6;
