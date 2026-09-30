@@ -196,6 +196,15 @@ export class BrickStudio {
     if (this.selected.kind === 'program' && this.selected.programSteps?.length) return [...this.selected.programSteps];
     return [];
   }
+  get programCursor(): number {
+    return this.driveActiveState && this.programSteps.length ? this.driveProgramRuntime.index : -1;
+  }
+  get suspensionContactCount(): number {
+    return this.driveVehicle?.wheelInfos.filter(wheel => wheel.isInContact).length ?? 0;
+  }
+  get suspensionWheelCount(): number {
+    return this.driveVehicle?.wheelInfos.length ?? this.wheelCount * 2;
+  }
   get meshedGearPairs(): number {
     let pairs = 0;
     const gears = this.records
@@ -1746,6 +1755,7 @@ export class BrickStudio {
     if (runtime.elapsed >= duration) {
       runtime.elapsed = 0;
       runtime.index = (runtime.index + 1) % steps.length;
+      this.notify();
     }
 
     return {
