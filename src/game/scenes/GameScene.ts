@@ -434,6 +434,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.inputSystem.pressed('dash') && time >= this.dashReadyAt) {
+      this.attackUntil = 0;
+      this.attackQueuedUntil = 0;
       this.dashUntil = time + 165;
       this.dashReadyAt = time + 500;
       this.invulnerableUntil = time + 190;
@@ -446,6 +448,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.inputSystem.pressed('parry') && time >= this.parryReadyAt) {
+      this.attackUntil = 0;
+      this.attackQueuedUntil = 0;
       this.parryUntil = time + 185;
       this.parryReadyAt = time + 540;
       this.player.anims.stop();
@@ -759,8 +763,10 @@ export class GameScene extends Phaser.Scene {
     const x = enemy.sprite.x;
     const y = enemy.sprite.y;
     enemy.sprite.setVelocity(0, 0);
+    enemy.sprite.setActive(false);
     const body = enemy.sprite.body as Phaser.Physics.Arcade.Body;
     body.enable = false;
+    enemy.sprite.setVisible(true);
     enemy.sprite.setTintFill(0xffffff);
     this.run.defeated++;
     this.run.score += isBoss ? 2600 : 280;
