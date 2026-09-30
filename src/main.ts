@@ -356,7 +356,6 @@ const studio = new BrickStudio(viewport, current => {
   driveButton.textContent = current.driveActive ? 'RETURN' : 'DRIVE TEST';
   driveStats.textContent =
     `${current.suspensionContactCount}/${current.suspensionWheelCount} CONTACT · ${current.motorCount} MOTOR · ${current.meshedGearPairs} GEAR MESH · ${current.propellerCount} PROP · ${current.programSteps.length ? current.programSteps.length + ' CMD' : current.programMode.toUpperCase()}`;
-  driveStats.dataset.suspensionDebug = current.suspensionDebug;
 
   ui.querySelectorAll<HTMLButtonElement>('[data-program]').forEach(button => {
     button.classList.toggle('active', button.dataset.program === current.programMode && current.programSteps.length === 0);
