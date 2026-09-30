@@ -65,6 +65,7 @@ export class GameScene extends Phaser.Scene {
   private comboCount = 0;
   private comboDecayAt = 0;
   private invulnerableUntil = 0;
+  private contactGraceUntil = 0;
   private overdriveUntil = 0;
   private bgGrid!: Phaser.GameObjects.TileSprite;
   private bgCity!: Phaser.GameObjects.TileSprite;
@@ -268,8 +269,6 @@ export class GameScene extends Phaser.Scene {
     if (this.comboCount > 0 && time > this.comboDecayAt) this.comboCount = 0;
     if (time - this.lastHud > 80) this.emitHud(false);
     if (this.player.y > HEIGHT + 260) this.respawnFromFall();
-
-    this.inputSystem.update();
   }
 
   private updatePlayer(time: number, _dt: number): void {
@@ -431,14 +430,14 @@ export class GameScene extends Phaser.Scene {
         if (distance > 155) s.setVelocityX(dir * (enemy.phase === 3 ? 105 : 68));
         else s.setVelocityX(0);
         if (time >= enemy.cooldown) {
-          if (distance < 165) {
+          if (this.inMeleeRange(enemy, 58, 22)) {
             if (time <= this.parryUntil) this.perfectParry(enemy);
-            else this.hurtPlayer(24, dir * 430);
-            enemy.cooldown = time + (enemy.phase === 3 ? 720 : 1080);
-          } else {
+            else this.hurtPlayer(24, dir * 360, enemy);
+            enemy.cooldown = time + (enemy.phase === 3 ? 820 : 1180);
+          } else if (distance < 760) {
             const count = enemy.phase;
             for (let i = 0; i < count; i++) this.fireProjectile(enemy, 340 + enemy.phase * 35, (i - (count - 1) / 2) * .15);
-            enemy.cooldown = time + (enemy.phase === 3 ? 820 : 1220);
+            enemy.cooldown = time + (enemy.phase === 3 ? 900 : 1280);
             this.tech = 'BOSS AI // PHASE ' + enemy.phase + ' PATTERN';
           }
         }
@@ -447,13 +446,39 @@ export class GameScene extends Phaser.Scene {
         const stop = enemy.type === 'guard' ? 78 : 60;
         if (distance > stop && distance < 520) s.setVelocityX(dir * speed);
         else s.setVelocityX(0);
-        if (distance < stop + 12 && time >= enemy.cooldown) {
+        const padding = enemy.type === 'guard' ? 26 : 18;
+        if (this.inMeleeRange(enemy, padding, 10) && time >= enemy.cooldown) {
           if (time <= this.parryUntil) this.perfectParry(enemy);
-          else this.hurtPlayer(enemy.type === 'guard' ? 18 : 12, dir * (enemy.type === 'guard' ? 330 : 250));
-          enemy.cooldown = time + (enemy.type === 'guard' ? 1450 : 950);
+          else this.hurtPlayer(enemy.type === 'guard' ? 18 : 12, dir * (enemy.type === 'guard' ? 280 : 220), enemy);
+          enemy.cooldown = time + (enemy.type === 'guard' ? 1550 : 1100);
         }
       }
     }
+  }
+
+  private inMeleeRange(enemy: Enemy, paddingX: number, paddingY: number): boolean {
+    if (!enemy.sprite.active || !this.player.active) return false;
+    const enemyBounds = enemy.sprite.getBounds();
+    const attackZone = new Phaser.Geom.Rectangle(
+      enemyBounds.x - paddingX,
+      enemyBounds.y - paddingY,
+      enemyBounds.width + paddingX * 2,
+      enemyBounds.height + paddingY * 2
+    );
+    return Phaser.Geom.Intersects.RectangleToRectangle(this.player.getBounds(), attackZone);
+  }
+
+  private separateFromEnemy(enemy: Enemy): void {
+    if (!enemy.sprite.active) return;
+    const playerBounds = this.player.getBounds();
+    const enemyBounds = enemy.sprite.getBounds();
+    if (!Phaser.Geom.Intersects.RectangleToRectangle(playerBounds, enemyBounds)) return;
+
+    const away = this.player.x < enemy.sprite.x ? -1 : 1;
+    const overlap = Math.min(playerBounds.right, enemyBounds.right) - Math.max(playerBounds.left, enemyBounds.left);
+    const shift = Math.max(12, overlap + 8);
+    this.player.x += away * shift;
+    this.player.setVelocityX(away * Math.max(180, Math.abs((this.player.body as Phaser.Physics.Arcade.Body).velocity.x)));
   }
 
   private fireProjectile(enemy: Enemy, speed: number, spread: number): void {
@@ -535,20 +560,29 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private hurtPlayer(amount: number, knockback: number): void {
+  private hurtPlayer(amount: number, knockback: number, source?: Enemy): void {
     const now = this.time.now;
-    if (!this.runActive || now < this.invulnerableUntil || now < this.dashUntil || now < this.overdriveUntil) return;
+    if (!this.runActive || now < this.invulnerableUntil || now < this.contactGraceUntil || now < this.dashUntil || now < this.overdriveUntil) return;
     if (now <= this.parryUntil) {
-      this.perfectParry();
+      this.perfectParry(source);
       return;
     }
+
     this.run.hp = Math.max(0, this.run.hp - amount);
-    this.invulnerableUntil = now + 760;
+    this.invulnerableUntil = now + 900;
+    this.contactGraceUntil = now + 420;
     this.comboCount = 0;
-    this.player.setVelocity(knockback, -260);
-    this.cameras.main.shake(180, .018);
-    this.cameras.main.flash(120, 255, 40, 80, false);
-    this.impact(this.player.x, this.player.y, 0xff4d79, 20);
+
+    if (source) this.separateFromEnemy(source);
+
+    const away = source ? (this.player.x < source.sprite.x ? -1 : 1) : Math.sign(knockback || 1);
+    const push = Math.max(170, Math.min(300, Math.abs(knockback)));
+    this.player.setVelocity(away * push, -190);
+
+    this.cameras.main.shake(150, .014);
+    this.cameras.main.flash(100, 255, 40, 80, false);
+    this.impact(this.player.x, this.player.y, 0xff4d79, 16);
+    this.tech = 'RECOVERY // CONTACT SEPARATION + INPUT PRESERVED';
     this.audio.sfx('hurt');
     if (this.run.hp <= 0) this.time.delayedCall(300, () => this.finish(false));
   }
