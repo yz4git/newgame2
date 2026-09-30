@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import {
   BODY_H, STUD, cloneSpec, createPart, footprint, partHeight,
-  type BrickSpec, type PartKind
+  type BrickSpec, type PartKind, type ProgramMode
 } from './brickFactory';
 
 export interface BrickRecord extends BrickSpec {
@@ -106,6 +106,9 @@ export class BrickStudio {
   private driveThrottle = 0;
   private driveSteer = 0;
   private driveWheelSpin = 0;
+  private driveWorld?: CANNON.World;
+  private driveBody?: CANNON.Body;
+  private driveProgramElapsed = 0;
 
   private lastFrame = performance.now();
 
@@ -153,6 +156,13 @@ export class BrickStudio {
   get physicsActive(): boolean { return Boolean(this.physicsWorld); }
   get driveActive(): boolean { return this.driveActiveState; }
   get wheelCount(): number { return this.records.filter(record => record.kind === 'wheel').length; }
+  get motorCount(): number { return this.records.filter(record => record.kind === 'motor').length; }
+  get gearCount(): number { return this.records.filter(record => record.kind === 'gear').length; }
+  get propellerCount(): number { return this.records.filter(record => record.kind === 'propeller').length; }
+  get programCount(): number { return this.records.filter(record => record.kind === 'program').length; }
+  get programMode(): ProgramMode {
+    return this.records.find(record => record.kind === 'program')?.programMode ?? 'manual';
+  }
   get instructionChoices(): { id: string; label: string; steps: number }[] {
     return Object.values(this.instructionModels).map(model => ({
       id: model.id,
@@ -188,9 +198,17 @@ export class BrickStudio {
       hinge: { w: 2, d: 2 },
       wheel: { w: 2, d: 2 },
       window: { w: 2, d: 1 },
-      roof: { w: 2, d: 4 }
+      roof: { w: 2, d: 4 },
+      motor: { w: 2, d: 2 },
+      gear: { w: 2, d: 2 },
+      propeller: { w: 2, d: 2 },
+      program: { w: 2, d: 2 }
     };
-    this.setSpec({ kind, ...defaults[kind] });
+    this.setSpec({
+      kind,
+      ...defaults[kind],
+      programMode: kind === 'program' ? 'manual' : this.selected.programMode
+    });
   }
 
   rotateSelection(): boolean {
@@ -225,6 +243,28 @@ export class BrickStudio {
       const record = this.records[id];
       if (record) record.color = color;
     }
+    this.rebuildAll();
+    this.notify();
+    return true;
+  }
+
+  setProgramMode(mode: ProgramMode): boolean {
+    if (this.physicsActive || this.driveActive) return false;
+    const ids = this.records
+      .map((record, index) => record.kind === 'program' ? index : -1)
+      .filter(index => index >= 0);
+    if (!ids.length) {
+      if (this.selected.kind === 'program') {
+        this.selected.programMode = mode;
+        this.rebuildGhost();
+        this.notify();
+        return true;
+      }
+      return false;
+    }
+    this.pushHistory();
+    for (const id of ids) this.records[id].programMode = mode;
+    this.selected.programMode = mode;
     this.rebuildAll();
     this.notify();
     return true;
@@ -1079,7 +1119,11 @@ export class BrickStudio {
       kind: (r.kind || 'brick') as PartKind,
       w: Number(r.w), d: Number(r.d), color: Number(r.color),
       rotation: r.rotation ? 1 : 0,
-      x: Number(r.x), y: Number(r.y), z: Number(r.z)
+      x: Number(r.x), y: Number(r.y), z: Number(r.z),
+      hingeAngle: Number.isFinite(Number(r.hingeAngle)) ? Number(r.hingeAngle) : undefined,
+      programMode: ['manual', 'cruise', 'patrol', 'spin'].includes(String(r.programMode))
+        ? r.programMode as ProgramMode
+        : undefined
     }));
     this.selectedIds.clear();
     this.rebuildAll();
