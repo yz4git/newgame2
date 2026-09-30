@@ -276,7 +276,7 @@ const studio = new BrickStudio(viewport, current => {
   const driveButton = ui.querySelector('[data-action="drive"]') as HTMLButtonElement;
   driveButton.textContent = current.driveActive ? 'RETURN' : 'DRIVE TEST';
   driveStats.textContent =
-    `${current.wheelCount * 2} WHEELS · ${current.motorCount} MOTOR · ${current.meshedGearPairs} MESH · ${current.propellerCount} PROP · ${current.programSteps.length ? current.programSteps.length + ' CMD' : current.programMode.toUpperCase()}`;
+    `${current.suspensionContactCount}/${current.suspensionWheelCount} CONTACT · ${current.motorCount} MOTOR · ${current.meshedGearPairs} GEAR MESH · ${current.propellerCount} PROP · ${current.programSteps.length ? current.programSteps.length + ' CMD' : current.programMode.toUpperCase()}`;
 
   ui.querySelectorAll<HTMLButtonElement>('[data-program]').forEach(button => {
     button.classList.toggle('active', button.dataset.program === current.programMode && current.programSteps.length === 0);
@@ -295,7 +295,7 @@ const studio = new BrickStudio(viewport, current => {
   };
   programSequence.innerHTML = current.programSteps.length
     ? current.programSteps.map((command, index) =>
-        `<span><b>${index + 1}</b>${commandLabel[command] ?? command}</span>`
+        `<span class="${current.programCursor === index ? 'running' : ''}"><b>${index + 1}</b>${commandLabel[command] ?? command}</span>`
       ).join('')
     : '<em>NO COMMANDS — PRESET MODE ACTIVE</em>';
 
