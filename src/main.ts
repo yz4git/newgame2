@@ -1,6 +1,7 @@
 import './style.css';
-import { BrickStudio } from './BrickStudio';
+import { BrickStudio, type Mode } from './BrickStudio';
 import { installFreshPagePolicy } from './pwa/FreshPage';
+import type { PartKind } from './brickFactory';
 
 const COLORS = [
   { name: 'Red', value: 0xe53935 },
@@ -17,6 +18,15 @@ const SIZES = [
   [1, 1], [1, 2], [1, 3], [1, 4],
   [2, 2], [2, 3], [2, 4]
 ] as const;
+
+const PARTS: { kind: PartKind; label: string; mark: string }[] = [
+  { kind: 'brick', label: 'BRICK', mark: '▦' },
+  { kind: 'slope', label: 'SLOPE', mark: '◢' },
+  { kind: 'hinge', label: 'HINGE', mark: '⌁' },
+  { kind: 'wheel', label: 'WHEEL', mark: '◉' },
+  { kind: 'window', label: 'WINDOW', mark: '▣' },
+  { kind: 'roof', label: 'ROOF', mark: '⌃' }
+];
 
 function syncViewport(): void {
   const viewport = window.visualViewport;
@@ -43,28 +53,70 @@ if (!(viewport instanceof HTMLElement) || !(ui instanceof HTMLElement)) throw ne
 
 ui.innerHTML = `
   <header class="topbar">
-    <div class="brand"><strong>BRICK<span>//</span>LAB</strong><small>3D BLOCK BUILDER</small></div>
+    <div class="brand"><strong>BRICK<span>//</span>LAB</strong><small>ADVANCED 3D BLOCK BUILDER</small></div>
     <div class="top-actions">
       <button data-action="undo" title="Undo">↶</button>
       <button data-action="redo" title="Redo">↷</button>
       <button data-action="view" title="Reset view">◎</button>
-      <button data-action="save">SAVE</button>
-      <button data-action="load">LOAD</button>
+      <button data-action="physics" class="physics">COLLAPSE</button>
     </div>
   </header>
 
   <aside class="toolbox">
     <section>
-      <label>BRICK</label>
+      <label>PART</label>
+      <div class="part-grid"></div>
+    </section>
+    <section>
+      <label>BASIC BRICK SIZE</label>
       <div class="size-grid"></div>
     </section>
     <section>
       <label>COLOR</label>
       <div class="color-grid"></div>
     </section>
-    <div class="tool-row">
-      <button data-action="rotate" class="wide">ROTATE 90°</button>
-      <button data-mode="remove" class="danger">REMOVE</button>
+    <section>
+      <label>EDIT MODE</label>
+      <div class="mode-grid">
+        <button data-mode="build">BUILD</button>
+        <button data-mode="select">SELECT</button>
+        <button data-mode="move">MOVE</button>
+        <button data-mode="remove" class="danger">REMOVE</button>
+      </div>
+    </section>
+    <section class="selection-tools">
+      <label>SELECTION</label>
+      <div class="edit-grid">
+        <button data-action="copy">COPY</button>
+        <button data-action="rotate">ROTATE</button>
+        <button data-action="up">UP</button>
+        <button data-action="down">DOWN</button>
+        <button data-action="all">ALL</button>
+        <button data-action="deselect">NONE</button>
+      </div>
+    </section>
+    <section>
+      <label>SAVE SLOTS</label>
+      <div class="slot-list">
+        <div class="slot-row" data-slot="1"><b>S1</b><span></span><button data-save="1">SAVE</button><button data-load="1">LOAD</button></div>
+        <div class="slot-row" data-slot="2"><b>S2</b><span></span><button data-save="2">SAVE</button><button data-load="2">LOAD</button></div>
+        <div class="slot-row" data-slot="3"><b>S3</b><span></span><button data-save="3">SAVE</button><button data-load="3">LOAD</button></div>
+      </div>
+    </section>
+    <button data-action="instructions" class="instruction-launch">INSTRUCTION MODE</button>
+  </aside>
+
+  <aside class="instruction-panel">
+    <small>STEP BUILD // MINI ROVER</small>
+    <strong class="instruction-count">STEP 1/7</strong>
+    <p class="instruction-label">Rear wheel module</p>
+    <div>
+      <button data-action="instruction-prev">BACK</button>
+      <button data-action="instruction-next" class="primary">ADD STEP</button>
+    </div>
+    <div>
+      <button data-action="instruction-keep">KEEP MODEL</button>
+      <button data-action="instruction-exit">EXIT</button>
     </div>
   </aside>
 
@@ -72,6 +124,7 @@ ui.innerHTML = `
     <div class="status">
       <b class="mode-label">BUILD MODE</b>
       <span class="piece-count">0 PIECES</span>
+      <span class="selection-count"></span>
     </div>
     <div class="footer-actions">
       <button data-action="demo">SAMPLE HOUSE</button>
@@ -79,9 +132,18 @@ ui.innerHTML = `
     </div>
   </footer>
 
-  <div class="hint">TAP: place/remove · DRAG: orbit · PINCH: zoom</div>
+  <div class="hint">BUILD: tap place · SELECT: multi-select · MOVE: drag selected · DRAG empty: orbit · PINCH: zoom</div>
   <div class="toast" aria-live="polite"></div>
 `;
+
+const partGrid = ui.querySelector('.part-grid') as HTMLElement;
+for (const part of PARTS) {
+  const button = document.createElement('button');
+  button.className = 'part-choice';
+  button.dataset.kind = part.kind;
+  button.innerHTML = `<i>${part.mark}</i><span>${part.label}</span>`;
+  partGrid.appendChild(button);
+}
 
 const sizeGrid = ui.querySelector('.size-grid') as HTMLElement;
 for (const [w, d] of SIZES) {
@@ -105,6 +167,9 @@ for (const color of COLORS) {
 
 const modeLabel = ui.querySelector('.mode-label') as HTMLElement;
 const pieceCount = ui.querySelector('.piece-count') as HTMLElement;
+const selectionCount = ui.querySelector('.selection-count') as HTMLElement;
+const instructionCount = ui.querySelector('.instruction-count') as HTMLElement;
+const instructionLabel = ui.querySelector('.instruction-label') as HTMLElement;
 const toast = ui.querySelector('.toast') as HTMLElement;
 let toastTimer = 0;
 
@@ -115,56 +180,118 @@ function showToast(text: string): void {
   toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 1300);
 }
 
+function modeName(mode: Mode): string {
+  if (mode === 'instruction') return 'INSTRUCTION';
+  return mode.toUpperCase() + ' MODE';
+}
+
 const studio = new BrickStudio(viewport, current => {
   pieceCount.textContent = current.pieceCount + (current.pieceCount === 1 ? ' PIECE' : ' PIECES');
-  modeLabel.textContent = current.currentMode === 'build' ? 'BUILD MODE' : 'REMOVE MODE';
-  ui.classList.toggle('remove-mode', current.currentMode === 'remove');
+  modeLabel.textContent = current.physicsActive ? 'PHYSICS RUNNING' : modeName(current.currentMode);
+  selectionCount.textContent = current.selectionCount ? `${current.selectionCount} SELECTED` : '';
+
+  ui.dataset.mode = current.currentMode;
+  ui.classList.toggle('physics-active', current.physicsActive);
 
   const spec = current.currentSpec;
+  ui.querySelectorAll<HTMLButtonElement>('.part-choice').forEach(button => {
+    button.classList.toggle('active', button.dataset.kind === spec.kind);
+  });
   ui.querySelectorAll<HTMLButtonElement>('.brick-choice').forEach(button => {
-    button.classList.toggle('active', Number(button.dataset.w) === spec.w && Number(button.dataset.d) === spec.d);
+    button.classList.toggle('active',
+      spec.kind === 'brick' &&
+      Number(button.dataset.w) === spec.w &&
+      Number(button.dataset.d) === spec.d
+    );
   });
   ui.querySelectorAll<HTMLButtonElement>('.color-choice').forEach(button => {
     button.classList.toggle('active', Number(button.dataset.color) === spec.color);
   });
+  ui.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => {
+    button.classList.toggle('active', button.dataset.mode === current.currentMode);
+  });
+
+  const physicsButton = ui.querySelector('[data-action="physics"]') as HTMLButtonElement;
+  physicsButton.textContent = current.physicsActive ? 'RESTORE' : 'COLLAPSE';
+
+  for (let slot = 1; slot <= 3; slot++) {
+    const row = ui.querySelector(`.slot-row[data-slot="${slot}"] span`);
+    if (row) row.textContent = current.slotInfo(slot);
+  }
+
+  const instruction = current.instructionStatus;
+  instructionCount.textContent = instruction.active
+    ? `STEP ${instruction.step}/${instruction.total}`
+    : 'STEP 1/7';
+  instructionLabel.textContent = instruction.label;
 });
 
-ui.querySelectorAll<HTMLButtonElement>('.brick-choice').forEach(button => {
+partGrid.querySelectorAll<HTMLButtonElement>('.part-choice').forEach(button => {
   button.addEventListener('click', () => {
-    studio.setMode('build');
-    studio.setSpec({ w: Number(button.dataset.w), d: Number(button.dataset.d) });
+    studio.setPartKind(button.dataset.kind as PartKind);
   });
 });
 
-ui.querySelectorAll<HTMLButtonElement>('.color-choice').forEach(button => {
+sizeGrid.querySelectorAll<HTMLButtonElement>('.brick-choice').forEach(button => {
   button.addEventListener('click', () => {
-    studio.setMode('build');
-    studio.setSpec({ color: Number(button.dataset.color) });
+    studio.setSpec({
+      kind: 'brick',
+      w: Number(button.dataset.w),
+      d: Number(button.dataset.d)
+    });
   });
 });
 
-ui.querySelector('[data-mode="remove"]')?.addEventListener('click', () => {
-  studio.setMode(studio.currentMode === 'remove' ? 'build' : 'remove');
+colorGrid.querySelectorAll<HTMLButtonElement>('.color-choice').forEach(button => {
+  button.addEventListener('click', () => studio.setSpec({ color: Number(button.dataset.color) }));
+});
+
+ui.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => {
+  button.addEventListener('click', () => studio.setMode(button.dataset.mode as Mode));
 });
 
 ui.querySelector('[data-action="rotate"]')?.addEventListener('click', () => studio.rotateSelection());
 ui.querySelector('[data-action="undo"]')?.addEventListener('click', () => studio.undo());
 ui.querySelector('[data-action="redo"]')?.addEventListener('click', () => studio.redo());
 ui.querySelector('[data-action="view"]')?.addEventListener('click', () => studio.resetView());
-ui.querySelector('[data-action="save"]')?.addEventListener('click', () => {
-  studio.save();
-  showToast('BUILD SAVED');
+ui.querySelector('[data-action="copy"]')?.addEventListener('click', () => showToast(studio.copySelection() ? 'SELECTION COPIED' : 'SELECT PARTS FIRST'));
+ui.querySelector('[data-action="up"]')?.addEventListener('click', () => showToast(studio.liftSelection(1) ? 'SELECTION RAISED' : 'CANNOT MOVE UP'));
+ui.querySelector('[data-action="down"]')?.addEventListener('click', () => showToast(studio.liftSelection(-1) ? 'SELECTION LOWERED' : 'CANNOT MOVE DOWN'));
+ui.querySelector('[data-action="all"]')?.addEventListener('click', () => studio.selectAll());
+ui.querySelector('[data-action="deselect"]')?.addEventListener('click', () => studio.clearSelection());
+ui.querySelector('[data-action="physics"]')?.addEventListener('click', () => studio.toggleCollapse());
+
+ui.querySelectorAll<HTMLButtonElement>('[data-save]').forEach(button => {
+  button.addEventListener('click', () => {
+    const slot = Number(button.dataset.save);
+    showToast(studio.saveSlot(slot) ? `SLOT ${slot} SAVED` : 'SAVE FAILED');
+  });
 });
-ui.querySelector('[data-action="load"]')?.addEventListener('click', () => {
-  showToast(studio.load() ? 'BUILD LOADED' : 'NO SAVE DATA');
+ui.querySelectorAll<HTMLButtonElement>('[data-load]').forEach(button => {
+  button.addEventListener('click', () => {
+    const slot = Number(button.dataset.load);
+    showToast(studio.loadSlot(slot) ? `SLOT ${slot} LOADED` : `SLOT ${slot} EMPTY`);
+  });
 });
+
+ui.querySelector('[data-action="instructions"]')?.addEventListener('click', () => studio.startInstructions());
+ui.querySelector('[data-action="instruction-prev"]')?.addEventListener('click', () => studio.instructionPrev());
+ui.querySelector('[data-action="instruction-next"]')?.addEventListener('click', () => {
+  if (!studio.instructionNext()) showToast('INSTRUCTIONS COMPLETE');
+});
+ui.querySelector('[data-action="instruction-keep"]')?.addEventListener('click', () => {
+  studio.keepInstructionModel();
+  showToast('GUIDED MODEL KEPT');
+});
+ui.querySelector('[data-action="instruction-exit"]')?.addEventListener('click', () => studio.stopInstructions(true));
+
 ui.querySelector('[data-action="demo"]')?.addEventListener('click', () => {
   studio.demoHouse();
   showToast('SAMPLE HOUSE BUILT');
 });
 ui.querySelector('[data-action="clear"]')?.addEventListener('click', () => {
-  if (studio.pieceCount === 0) return;
-  if (window.confirm('すべてのブロックを消しますか？')) {
+  if (studio.pieceCount === 0 || studio.physicsActive) return;
+  if (window.confirm('すべてのパーツを消しますか？')) {
     studio.clear();
     showToast('BASEPLATE CLEARED');
   }
@@ -176,9 +303,8 @@ document.addEventListener('visibilitychange', () => {
     studio.resize();
   }
 });
-
 window.addEventListener('resize', () => studio.resize(), { passive: true });
 window.visualViewport?.addEventListener('resize', () => studio.resize(), { passive: true });
 
-studio.setSpec({ w: 2, d: 4, color: COLORS[0].value });
+studio.setSpec({ kind: 'brick', w: 2, d: 4, color: COLORS[0].value });
 void installFreshPagePolicy();
