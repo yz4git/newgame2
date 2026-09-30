@@ -470,7 +470,7 @@ export class BrickStudio {
       )),
       new CANNON.Vec3(center.x, .30, center.z)
     );
-    body.position.set(0, .62, 0);
+    body.position.set(0, .45, 0);
     this.driveVisualYOffset = body.position.y;
 
     const vehicle = new CANNON.RaycastVehicle({
