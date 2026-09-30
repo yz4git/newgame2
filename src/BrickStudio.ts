@@ -408,6 +408,9 @@ export class BrickStudio {
     this.driveSteer = 0;
     this.driveWheelSpin = 0;
     this.driveProgramElapsed = 0;
+    this.driveProgramRuntime = { index: 0, elapsed: 0, motorEnabled: true, hingeTarget: null };
+    this.gearDirections = this.computeGearDirections();
+
     this.brickLayer.position.set(0, 0, 0);
     this.brickLayer.rotation.set(0, 0, 0);
     this.brickLayer.quaternion.identity();
@@ -418,32 +421,89 @@ export class BrickStudio {
 
     const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
     world.allowSleep = false;
-    world.defaultContactMaterial.friction = .72;
-    world.defaultContactMaterial.restitution = .03;
+    world.defaultContactMaterial.friction = .84;
+    world.defaultContactMaterial.restitution = .025;
 
     const ground = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
     ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     ground.position.y = -.025;
     world.addBody(ground);
 
-    const mass = Math.max(1.1, this.records.length * .18 + this.motorCount * .28);
+    const mass = Math.max(1.1, this.records.length * .18 + this.motorCount * .30);
     const body = new CANNON.Body({
       mass,
-      linearDamping: .22,
-      angularDamping: .78,
+      linearDamping: .16,
+      angularDamping: .62,
       allowSleep: false
     });
-    body.angularFactor.set(0, 1, 0);
     body.addShape(
       new CANNON.Box(new CANNON.Vec3(
-        Math.max(.25, size.x / 2),
-        Math.max(.18, size.y / 2),
-        Math.max(.25, size.z / 2)
+        Math.max(.32, size.x * .46),
+        Math.max(.18, Math.min(.72, size.y * .25)),
+        Math.max(.32, size.z * .46)
       )),
-      new CANNON.Vec3(center.x, center.y, center.z)
+      new CANNON.Vec3(center.x, Math.max(.25, center.y * .55), center.z)
     );
-    body.position.set(0, .055, 0);
-    world.addBody(body);
+    body.position.set(0, .52, 0);
+
+    const vehicle = new CANNON.RaycastVehicle({
+      chassisBody: body,
+      indexRightAxis: 0,
+      indexUpAxis: 1,
+      indexForwardAxis: 2
+    });
+
+    const wheelRecords = this.records
+      .map((record, index) => ({ record, index }))
+      .filter(item => item.record.kind === 'wheel');
+    const frontZ = wheelRecords.length ? Math.min(...wheelRecords.map(item => item.record.z)) : 0;
+
+    this.driveWheelVisuals = [];
+    for (const item of wheelRecords) {
+      const record = item.record;
+      const f = footprint(record);
+      const group = this.brickLayer.children[item.index];
+      const visuals: THREE.Object3D[] = [];
+      group?.traverse(object => {
+        if (object.userData.partRole === 'wheel') visuals.push(object);
+      });
+
+      for (const visual of visuals) {
+        const side = Number(visual.userData.wheelSide ?? 1) || 1;
+        const localX = record.x + side * f.w * STUD * .56;
+        const localZ = record.z;
+        const wheelIndex = vehicle.addWheel({
+          radius: .50,
+          directionLocal: new CANNON.Vec3(0, -1, 0),
+          suspensionStiffness: 38,
+          suspensionRestLength: .30,
+          frictionSlip: 4.8,
+          dampingRelaxation: 2.6,
+          dampingCompression: 4.8,
+          maxSuspensionForce: 6200,
+          rollInfluence: .045,
+          axleLocal: new CANNON.Vec3(-1, 0, 0),
+          chassisConnectionPointLocal: new CANNON.Vec3(
+            localX,
+            record.y + BODY_H * .55 + .25,
+            localZ
+          ),
+          maxSuspensionTravel: .24,
+          customSlidingRotationalSpeed: -24,
+          useCustomSlidingRotationalSpeed: true
+        });
+        this.driveWheelVisuals.push({
+          wheelIndex,
+          recordIndex: item.index,
+          mesh: visual,
+          baseY: visual.position.y,
+          steering: record.z <= frontZ + STUD * .45
+        });
+      }
+    }
+
+    vehicle.addToWorld(world);
+    this.buildDriveTerrain(world);
 
     const wallHeight = 2.4;
     const wallThickness = .35;
@@ -463,6 +523,7 @@ export class BrickStudio {
 
     this.driveWorld = world;
     this.driveBody = body;
+    this.driveVehicle = vehicle;
     this.notify();
     return true;
   }
@@ -478,17 +539,22 @@ export class BrickStudio {
     this.driveActiveState = false;
     this.driveThrottle = 0;
     this.driveSteer = 0;
+    if (this.driveVehicle && this.driveWorld) this.driveVehicle.removeFromWorld(this.driveWorld);
     this.driveWorld = undefined;
     this.driveBody = undefined;
+    this.driveVehicle = undefined;
+    this.driveWheelVisuals = [];
     this.driveProgramElapsed = 0;
+    this.driveProgramRuntime = { index: 0, elapsed: 0, motorEnabled: true, hingeTarget: null };
+    this.driveTerrain.clear();
+    this.driveTerrain.visible = false;
 
     if (reset) {
       this.brickLayer.position.set(0, 0, 0);
       this.brickLayer.rotation.set(0, 0, 0);
       this.brickLayer.quaternion.identity();
       this.driveWheelSpin = 0;
-      this.orbitTarget.x = 0;
-      this.orbitTarget.z = 0;
+      this.orbitTarget.set(0, 1.2, 0);
       this.rebuildAll();
       this.updateCamera();
     }
@@ -1542,16 +1608,174 @@ export class BrickStudio {
     }
   }
 
+  private buildDriveTerrain(world: CANNON.World): void {
+    this.driveTerrain.clear();
+    this.driveTerrain.visible = true;
+
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x9aabc0,
+      roughness: .82,
+      metalness: .02
+    });
+    const bumps = [
+      { x: -3.0, z: -4.0, sx: 2.8, sy: .18, sz: .75, r: .04 },
+      { x:  2.6, z: -1.2, sx: 1.1, sy: .28, sz: 2.4, r: -.05 },
+      { x: -1.2, z:  3.4, sx: 3.2, sy: .13, sz: .65, r: .02 },
+      { x:  4.3, z:  4.8, sx: 1.5, sy: .22, sz: 1.5, r: 0 }
+    ];
+
+    for (const bump of bumps) {
+      const body = new CANNON.Body({
+        mass: 0,
+        shape: new CANNON.Box(new CANNON.Vec3(bump.sx / 2, bump.sy / 2, bump.sz / 2))
+      });
+      body.position.set(bump.x, bump.sy / 2, bump.z);
+      body.quaternion.setFromEuler(0, 0, bump.r);
+      world.addBody(body);
+
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(bump.sx, bump.sy, bump.sz),
+        material
+      );
+      mesh.position.set(bump.x, bump.sy / 2, bump.z);
+      mesh.rotation.z = bump.r;
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      this.driveTerrain.add(mesh);
+    }
+  }
+
+  private computeGearDirections(): Map<number, number> {
+    const map = new Map<number, number>();
+    const gearIds = this.records
+      .map((record, index) => record.kind === 'gear' ? index : -1)
+      .filter(index => index >= 0);
+
+    const adjacent = (aId: number, bId: number): boolean => {
+      const a = this.records[aId];
+      const b = this.records[bId];
+      const distance = Math.hypot(a.x - b.x, a.z - b.z);
+      return Math.abs(a.y - b.y) <= BODY_H * .8 &&
+        distance >= STUD * .65 &&
+        distance <= STUD * 1.65;
+    };
+
+    for (const root of gearIds) {
+      if (map.has(root)) continue;
+      map.set(root, 1);
+      const queue = [root];
+      while (queue.length) {
+        const current = queue.shift()!;
+        const direction = map.get(current) ?? 1;
+        for (const candidate of gearIds) {
+          if (candidate === current || !adjacent(current, candidate)) continue;
+          if (!map.has(candidate)) {
+            map.set(candidate, -direction);
+            queue.push(candidate);
+          }
+        }
+      }
+    }
+    return map;
+  }
+
+  private updateProgramSequence(delta: number): {
+    throttle: number;
+    steer: number;
+    motorEnabled: boolean;
+    hingeTarget: number | null;
+  } {
+    const steps = this.programSteps;
+    const runtime = this.driveProgramRuntime;
+    if (!steps.length) {
+      return {
+        throttle: this.driveThrottle,
+        steer: this.driveSteer,
+        motorEnabled: true,
+        hingeTarget: null
+      };
+    }
+
+    const command = steps[runtime.index % steps.length];
+    runtime.elapsed += delta;
+
+    let duration = .75;
+    let throttle = 0;
+    let steer = 0;
+
+    switch (command) {
+      case 'motorOn':
+        runtime.motorEnabled = true;
+        duration = .20;
+        break;
+      case 'motorOff':
+        runtime.motorEnabled = false;
+        duration = .20;
+        break;
+      case 'forward':
+        throttle = .78;
+        duration = 1.15;
+        break;
+      case 'reverse':
+        throttle = -.62;
+        duration = .95;
+        break;
+      case 'left':
+        throttle = .48;
+        steer = -.82;
+        duration = .82;
+        break;
+      case 'right':
+        throttle = .48;
+        steer = .82;
+        duration = .82;
+        break;
+      case 'wait':
+        duration = .72;
+        break;
+      case 'hingeOpen':
+        runtime.hingeTarget = 95;
+        duration = .55;
+        break;
+      case 'hingeClose':
+        runtime.hingeTarget = 12;
+        duration = .55;
+        break;
+    }
+
+    if (runtime.elapsed >= duration) {
+      runtime.elapsed = 0;
+      runtime.index = (runtime.index + 1) % steps.length;
+    }
+
+    return {
+      throttle,
+      steer,
+      motorEnabled: runtime.motorEnabled,
+      hingeTarget: runtime.hingeTarget
+    };
+  }
+
   private updateDrive(delta: number): void {
     const world = this.driveWorld;
     const body = this.driveBody;
-    if (!this.driveActiveState || !world || !body) return;
+    const vehicle = this.driveVehicle;
+    if (!this.driveActiveState || !world || !body || !vehicle) return;
 
     this.driveProgramElapsed += delta;
 
     let throttle = this.driveThrottle;
     let steer = this.driveSteer;
-    if (this.programCount > 0) {
+    let motorEnabled = true;
+    let hingeTarget: number | null = null;
+
+    if (this.programSteps.length) {
+      const program = this.updateProgramSequence(delta);
+      throttle = program.throttle;
+      steer = program.steer;
+      motorEnabled = program.motorEnabled;
+      hingeTarget = program.hingeTarget;
+    } else if (this.programCount > 0) {
       switch (this.programMode) {
         case 'cruise':
           throttle = .72;
@@ -1568,57 +1792,77 @@ export class BrickStudio {
       }
     }
 
-    const localForward = new CANNON.Vec3(0, 0, -1);
-    const forward = new CANNON.Vec3();
-    body.quaternion.vmult(localForward, forward);
-
-    const motorBoost = 1 + this.motorCount * .42;
+    const motorBoost = motorEnabled ? 1 + this.motorCount * .42 : .18;
     const propellerBoost = this.propellerCount * .34;
-    const gearRatio = 1 + Math.min(4, this.gearCount) * .16;
-    const driveForce = throttle * 13.5 * (motorBoost + propellerBoost) * gearRatio;
+    const gearRatio = 1 + Math.min(4, this.gearCount) * .10 + Math.min(4, this.meshedGearPairs) * .12;
+    const engineForce = throttle * 15.5 * (motorBoost + propellerBoost) * gearRatio;
 
-    body.applyForce(
-      new CANNON.Vec3(forward.x * driveForce, 0, forward.z * driveForce),
-      body.position
-    );
+    for (const visual of this.driveWheelVisuals) {
+      vehicle.applyEngineForce(-engineForce, visual.wheelIndex);
+      vehicle.setSteeringValue(visual.steering ? steer * .48 : 0, visual.wheelIndex);
+      vehicle.setBrake(Math.abs(throttle) < .04 ? .42 : 0, visual.wheelIndex);
+    }
 
-    const steerAuthority = (.72 + Math.abs(throttle) * 1.15) * (this.wheelCount >= 2 ? 1 : .48);
-    body.angularVelocity.y += steer * steerAuthority * delta * 4.2;
-    body.angularVelocity.y = THREE.MathUtils.clamp(body.angularVelocity.y, -1.8, 1.8);
+    if (this.propellerCount > 0) {
+      const forward = new CANNON.Vec3(0, 0, -1);
+      body.quaternion.vmult(forward, forward);
+      const propForce = throttle * this.propellerCount * 4.8 * (motorEnabled ? 1 : .2);
+      body.applyForce(
+        new CANNON.Vec3(forward.x * propForce, 0, forward.z * propForce),
+        body.position
+      );
+    }
+
+    world.step(1 / 60, Math.min(delta, .05), 5);
 
     const horizontalSpeed = Math.hypot(body.velocity.x, body.velocity.z);
-    const topSpeed = 3.3 + this.motorCount * .45 + this.gearCount * .42 + this.propellerCount * .58;
+    const topSpeed = 3.4 + this.motorCount * .52 + this.gearCount * .34 +
+      this.meshedGearPairs * .26 + this.propellerCount * .62;
     if (horizontalSpeed > topSpeed) {
       const scale = topSpeed / horizontalSpeed;
       body.velocity.x *= scale;
       body.velocity.z *= scale;
     }
 
-    world.step(1 / 60, Math.min(delta, .05), 4);
-
     this.brickLayer.position.set(body.position.x, body.position.y, body.position.z);
     this.brickLayer.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
 
-    const visualPower = throttle * (1 + this.motorCount * .28 + this.propellerCount * .38);
+    for (const visual of this.driveWheelVisuals) {
+      const info = vehicle.wheelInfos[visual.wheelIndex];
+      if (!info) continue;
+      const travel = info.suspensionLength - .30;
+      visual.mesh.position.y = visual.baseY - travel;
+      visual.mesh.rotation.y = Math.PI / 2 + (visual.steering ? info.steering : 0);
+      visual.mesh.rotation.z = info.rotation;
+    }
+
+    const visualPower = throttle * (motorEnabled ? 1 : .16) *
+      (1 + this.motorCount * .28 + this.propellerCount * .38);
     this.driveWheelSpin += visualPower * delta * 10.5;
+
     this.records.forEach((record, index) => {
       const group = this.brickLayer.children[index];
       if (!group) return;
       group.traverse(object => {
         const role = object.userData.partRole;
-        if (record.kind === 'wheel' && role === 'wheel') object.rotation.z = this.driveWheelSpin;
-        else if (record.kind === 'motor' && role === 'motor-rotor') object.rotation.z = this.driveWheelSpin * 1.8;
-        else if (record.kind === 'gear' && role === 'gear') object.rotation.y = this.driveWheelSpin * 1.35;
-        else if (record.kind === 'propeller' && role === 'propeller-rotor') object.rotation.z = this.driveWheelSpin * 2.8;
-        else if (record.kind === 'program' && role === 'program-led') {
+        if (record.kind === 'motor' && role === 'motor-rotor') {
+          object.rotation.z = this.driveWheelSpin * 1.8;
+        } else if (record.kind === 'gear' && role === 'gear') {
+          object.rotation.y = this.driveWheelSpin * 1.35 * (this.gearDirections.get(index) ?? 1);
+        } else if (record.kind === 'propeller' && role === 'propeller-rotor') {
+          object.rotation.z = this.driveWheelSpin * 2.8;
+        } else if (record.kind === 'program' && role === 'program-led') {
           const pulse = .85 + Math.sin(this.driveProgramElapsed * 9) * .15;
           object.scale.setScalar(pulse);
+        } else if (record.kind === 'hinge' && role === 'hinge-flap' && hingeTarget !== null) {
+          const target = -THREE.MathUtils.degToRad(hingeTarget);
+          object.rotation.x = THREE.MathUtils.lerp(object.rotation.x, target, Math.min(1, delta * 5.5));
         }
       });
     });
 
     this.orbitTarget.x = body.position.x;
-    this.orbitTarget.y = Math.max(.9, body.position.y + .9);
+    this.orbitTarget.y = Math.max(.9, body.position.y + .85);
     this.orbitTarget.z = body.position.z;
     this.updateCamera();
   }
