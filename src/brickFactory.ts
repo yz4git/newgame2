@@ -271,16 +271,16 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
     rotor.userData.partRole = 'gear-rotor';
     tag(group, rotor);
 
-    const gear = new THREE.Mesh(new THREE.TorusGeometry(.38, .12, 10, 24), gearMat);
+    const gear = new THREE.Mesh(new THREE.TorusGeometry(.57, .16, 10, 28), gearMat);
     gear.rotation.x = Math.PI / 2;
     gear.castShadow = true;
     tag(group, gear);
     rotor.add(gear);
 
     for (let i = 0; i < 10; i++) {
-      const tooth = new THREE.Mesh(new THREE.BoxGeometry(.13, .12, .20), gearMat);
+      const tooth = new THREE.Mesh(new THREE.BoxGeometry(.16, .14, .24), gearMat);
       const a = i / 10 * Math.PI * 2;
-      tooth.position.set(Math.cos(a) * .48, 0, Math.sin(a) * .48);
+      tooth.position.set(Math.cos(a) * .72, 0, Math.sin(a) * .72);
       tooth.rotation.y = -a;
       tag(group, tooth);
       rotor.add(tooth);
