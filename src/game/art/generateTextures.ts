@@ -40,15 +40,67 @@ export function generateTextures(scene: Phaser.Scene): void {
   texture(scene, 'hero-idle', 72, 64, g => hero(g, 0));
   texture(scene, 'hero-run-a', 72, 64, g => hero(g, 1));
   texture(scene, 'hero-run-b', 72, 64, g => hero(g, 2));
-  texture(scene, 'hero-atk-1', 72, 64, g => hero(g, 3));
-  texture(scene, 'hero-atk-2', 72, 64, g => {
-    hero(g, 4);
-    g.lineStyle(5, 0x4ef7ff, .7).beginPath().arc(37, 28, 29, -.9, .8).strokePath();
+  texture(scene, 'hero-idle-b', 72, 64, g => {
+    hero(g, 0);
+    g.fillStyle(0x4ef7ff, .14).fillRect(11, 46, 28, 2);
+    g.fillStyle(0xff3bd4, .18).fillCircle(42, 20, 4);
   });
-  texture(scene, 'hero-atk-3', 88, 72, g => {
+  texture(scene, 'hero-run-c', 72, 64, g => {
+    hero(g, 1);
+    g.fillStyle(0x4ef7ff, .24).fillRect(1, 47, 20, 2);
+  });
+  texture(scene, 'hero-run-d', 72, 64, g => {
+    hero(g, 2);
+    g.fillStyle(0xff3bd4, .20).fillRect(3, 50, 18, 2);
+  });
+  texture(scene, 'hero-jump', 72, 64, g => {
     hero(g, 3);
-    g.lineStyle(6, 0xffd35a, .75).beginPath().arc(36, 34, 39, -1.05, .95).strokePath();
-    g.fillStyle(0xffd35a, .25).fillCircle(55, 32, 12);
+    g.fillStyle(0x4ef7ff, .18).fillTriangle(7, 60, 17, 46, 25, 60);
+  });
+  texture(scene, 'hero-fall', 72, 64, g => {
+    hero(g, 4);
+    g.fillStyle(0xff3bd4, .14).fillTriangle(8, 13, 19, 28, 3, 26);
+  });
+  texture(scene, 'hero-dash', 82, 64, g => {
+    hero(g, 3);
+    g.fillStyle(0x4ef7ff, .22).fillTriangle(0, 26, 28, 14, 28, 38);
+    g.fillStyle(0x4ef7ff, .12).fillRect(2, 43, 32, 3);
+  });
+  texture(scene, 'hero-parry', 72, 64, g => {
+    hero(g, 0);
+    g.lineStyle(4, 0xffd35a, .72).strokeCircle(34, 30, 25);
+    g.lineStyle(2, 0xffffff, .5).strokeCircle(34, 30, 18);
+  });
+
+  texture(scene, 'hero-atk1-a', 72, 64, g => {
+    hero(g, 3);
+    g.lineStyle(3, 0x4ef7ff, .48).beginPath().arc(38, 31, 23, -1.1, .2).strokePath();
+  });
+  texture(scene, 'hero-atk1-b', 72, 64, g => {
+    hero(g, 3);
+    g.lineStyle(5, 0x4ef7ff, .76).beginPath().arc(38, 31, 34, -.95, .75).strokePath();
+  });
+  texture(scene, 'hero-atk2-a', 76, 64, g => {
+    hero(g, 4);
+    g.lineStyle(4, 0xff3bd4, .46).beginPath().arc(36, 28, 26, -.9, .15).strokePath();
+  });
+  texture(scene, 'hero-atk2-b', 82, 64, g => {
+    hero(g, 4);
+    g.lineStyle(6, 0xff3bd4, .78).beginPath().arc(38, 29, 38, -.85, .9).strokePath();
+  });
+  texture(scene, 'hero-atk3-a', 88, 72, g => {
+    hero(g, 3);
+    g.lineStyle(5, 0xffd35a, .48).beginPath().arc(37, 34, 33, -1.1, .2).strokePath();
+  });
+  texture(scene, 'hero-atk3-b', 94, 72, g => {
+    hero(g, 3);
+    g.lineStyle(7, 0xffd35a, .82).beginPath().arc(38, 35, 43, -1.05, .98).strokePath();
+    g.fillStyle(0xffd35a, .20).fillCircle(60, 33, 14);
+  });
+  texture(scene, 'hero-atk3-c', 94, 72, g => {
+    hero(g, 4);
+    g.lineStyle(4, 0xffffff, .50).beginPath().arc(37, 35, 37, -.7, .7).strokePath();
+    g.fillStyle(0xffd35a, .14).fillCircle(56, 34, 18);
   });
 
   texture(scene, 'runner', 48, 48, g => {
@@ -139,9 +191,36 @@ export function generateTextures(scene: Phaser.Scene): void {
   });
 
   scene.anims.create({
-    key: 'hero-run',
-    frames: [{ key: 'hero-run-a' }, { key: 'hero-run-b' }],
-    frameRate: 12,
+    key: 'anim-idle',
+    frames: [{ key: 'hero-idle' }, { key: 'hero-idle-b' }],
+    frameRate: 3,
     repeat: -1
+  });
+  scene.anims.create({
+    key: 'anim-run',
+    frames: [
+      { key: 'hero-run-a' }, { key: 'hero-run-c' },
+      { key: 'hero-run-b' }, { key: 'hero-run-d' }
+    ],
+    frameRate: 14,
+    repeat: -1
+  });
+  scene.anims.create({
+    key: 'anim-atk1',
+    frames: [{ key: 'hero-atk1-a' }, { key: 'hero-atk1-b' }],
+    frameRate: 16,
+    repeat: 0
+  });
+  scene.anims.create({
+    key: 'anim-atk2',
+    frames: [{ key: 'hero-atk2-a' }, { key: 'hero-atk2-b' }],
+    frameRate: 15,
+    repeat: 0
+  });
+  scene.anims.create({
+    key: 'anim-atk3',
+    frames: [{ key: 'hero-atk3-a' }, { key: 'hero-atk3-b' }, { key: 'hero-atk3-c' }],
+    frameRate: 13,
+    repeat: 0
   });
 }
