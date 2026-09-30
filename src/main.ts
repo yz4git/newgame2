@@ -58,6 +58,7 @@ ui.innerHTML = `
       <button data-action="undo" title="Undo">↶</button>
       <button data-action="redo" title="Redo">↷</button>
       <button data-action="view" title="Reset view">◎</button>
+      <button data-action="drive" class="drive">DRIVE TEST</button>
       <button data-action="physics" class="physics">COLLAPSE</button>
     </div>
   </header>
@@ -93,6 +94,8 @@ ui.innerHTML = `
         <button data-action="down">DOWN</button>
         <button data-action="all">ALL</button>
         <button data-action="deselect">NONE</button>
+        <button data-action="hinge-close">HINGE −</button>
+        <button data-action="hinge-open">HINGE +</button>
       </div>
     </section>
     <section>
@@ -103,11 +106,18 @@ ui.innerHTML = `
         <div class="slot-row" data-slot="3"><b>S3</b><span></span><button data-save="3">SAVE</button><button data-load="3">LOAD</button></div>
       </div>
     </section>
-    <button data-action="instructions" class="instruction-launch">INSTRUCTION MODE</button>
+    <section>
+      <label>INSTRUCTIONS</label>
+      <div class="instruction-grid">
+        <button data-instruction-model="rover">ROVER</button>
+        <button data-instruction-model="house">HOUSE</button>
+        <button data-instruction-model="tower">TOWER</button>
+      </div>
+    </section>
   </aside>
 
   <aside class="instruction-panel">
-    <small>STEP BUILD // MINI ROVER</small>
+    <small class="instruction-model-title">STEP BUILD // MINI ROVER</small>
     <strong class="instruction-count">STEP 1/7</strong>
     <p class="instruction-label">Rear wheel module</p>
     <div>
@@ -118,6 +128,18 @@ ui.innerHTML = `
       <button data-action="instruction-keep">KEEP MODEL</button>
       <button data-action="instruction-exit">EXIT</button>
     </div>
+  </aside>
+
+  <aside class="drive-panel">
+    <small>WHEEL DRIVE TEST</small>
+    <strong>HOLD TO DRIVE</strong>
+    <div class="drive-controls">
+      <button data-drive-steer="-1">LEFT</button>
+      <button data-drive-throttle="1" class="primary">FWD</button>
+      <button data-drive-steer="1">RIGHT</button>
+      <button data-drive-throttle="-1">REV</button>
+    </div>
+    <p>Model returns to its build position when DRIVE TEST ends.</p>
   </aside>
 
   <footer class="bottombar">
@@ -170,6 +192,7 @@ const pieceCount = ui.querySelector('.piece-count') as HTMLElement;
 const selectionCount = ui.querySelector('.selection-count') as HTMLElement;
 const instructionCount = ui.querySelector('.instruction-count') as HTMLElement;
 const instructionLabel = ui.querySelector('.instruction-label') as HTMLElement;
+const instructionModelTitle = ui.querySelector('.instruction-model-title') as HTMLElement;
 const toast = ui.querySelector('.toast') as HTMLElement;
 let toastTimer = 0;
 
@@ -192,6 +215,7 @@ const studio = new BrickStudio(viewport, current => {
 
   ui.dataset.mode = current.currentMode;
   ui.classList.toggle('physics-active', current.physicsActive);
+  ui.classList.toggle('drive-active', current.driveActive);
 
   const spec = current.currentSpec;
   ui.querySelectorAll<HTMLButtonElement>('.part-choice').forEach(button => {
@@ -213,6 +237,8 @@ const studio = new BrickStudio(viewport, current => {
 
   const physicsButton = ui.querySelector('[data-action="physics"]') as HTMLButtonElement;
   physicsButton.textContent = current.physicsActive ? 'RESTORE' : 'COLLAPSE';
+  const driveButton = ui.querySelector('[data-action="drive"]') as HTMLButtonElement;
+  driveButton.textContent = current.driveActive ? 'RETURN' : 'DRIVE TEST';
 
   for (let slot = 1; slot <= 3; slot++) {
     const row = ui.querySelector(`.slot-row[data-slot="${slot}"] span`);
@@ -224,6 +250,7 @@ const studio = new BrickStudio(viewport, current => {
     ? `STEP ${instruction.step}/${instruction.total}`
     : 'STEP 1/7';
   instructionLabel.textContent = instruction.label;
+  instructionModelTitle.textContent = 'STEP BUILD // ' + instruction.model;
 });
 
 partGrid.querySelectorAll<HTMLButtonElement>('.part-choice').forEach(button => {
@@ -268,6 +295,15 @@ ui.querySelector('[data-action="up"]')?.addEventListener('click', () => showToas
 ui.querySelector('[data-action="down"]')?.addEventListener('click', () => showToast(studio.liftSelection(-1) ? 'SELECTION LOWERED' : 'CANNOT MOVE DOWN'));
 ui.querySelector('[data-action="all"]')?.addEventListener('click', () => studio.selectAll());
 ui.querySelector('[data-action="deselect"]')?.addEventListener('click', () => studio.clearSelection());
+ui.querySelector('[data-action="hinge-close"]')?.addEventListener('click', () => {
+  showToast(studio.adjustSelectedHinges(-15) ? 'HINGE CLOSED' : 'SELECT A HINGE');
+});
+ui.querySelector('[data-action="hinge-open"]')?.addEventListener('click', () => {
+  showToast(studio.adjustSelectedHinges(15) ? 'HINGE OPENED' : 'SELECT A HINGE');
+});
+ui.querySelector('[data-action="drive"]')?.addEventListener('click', () => {
+  showToast(studio.toggleDrive() ? (studio.driveActive ? 'DRIVE TEST STARTED' : 'BUILD POSITION RESTORED') : 'ADD AT LEAST 2 WHEELS');
+});
 ui.querySelector('[data-action="physics"]')?.addEventListener('click', () => studio.toggleCollapse());
 
 ui.querySelectorAll<HTMLButtonElement>('[data-save]').forEach(button => {
@@ -283,7 +319,9 @@ ui.querySelectorAll<HTMLButtonElement>('[data-load]').forEach(button => {
   });
 });
 
-ui.querySelector('[data-action="instructions"]')?.addEventListener('click', () => studio.startInstructions());
+ui.querySelectorAll<HTMLButtonElement>('[data-instruction-model]').forEach(button => {
+  button.addEventListener('click', () => studio.startInstructions(button.dataset.instructionModel));
+});
 ui.querySelector('[data-action="instruction-prev"]')?.addEventListener('click', () => studio.instructionPrev());
 ui.querySelector('[data-action="instruction-next"]')?.addEventListener('click', () => {
   if (!studio.instructionNext()) showToast('INSTRUCTIONS COMPLETE');
@@ -293,6 +331,42 @@ ui.querySelector('[data-action="instruction-keep"]')?.addEventListener('click', 
   showToast('GUIDED MODEL KEPT');
 });
 ui.querySelector('[data-action="instruction-exit"]')?.addEventListener('click', () => studio.stopInstructions(true));
+
+let driveThrottle = 0;
+let driveSteer = 0;
+const syncDrive = () => studio.setDriveControl(driveThrottle, driveSteer);
+
+ui.querySelectorAll<HTMLButtonElement>('[data-drive-throttle]').forEach(button => {
+  const value = Number(button.dataset.driveThrottle);
+  const start = (event: PointerEvent) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    driveThrottle = value;
+    syncDrive();
+  };
+  const end = () => {
+    driveThrottle = 0;
+    syncDrive();
+  };
+  button.addEventListener('pointerdown', start);
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(name => button.addEventListener(name, end));
+});
+
+ui.querySelectorAll<HTMLButtonElement>('[data-drive-steer]').forEach(button => {
+  const value = Number(button.dataset.driveSteer);
+  const start = (event: PointerEvent) => {
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    driveSteer = value;
+    syncDrive();
+  };
+  const end = () => {
+    driveSteer = 0;
+    syncDrive();
+  };
+  button.addEventListener('pointerdown', start);
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(name => button.addEventListener(name, end));
+});
 
 ui.querySelector('[data-action="demo"]')?.addEventListener('click', () => {
   studio.demoHouse();
