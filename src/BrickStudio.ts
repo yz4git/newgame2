@@ -1304,8 +1304,8 @@ export class BrickStudio {
           f.d * STUD / 2 - .035
         )),
         position: new CANNON.Vec3(record.x, record.y + h / 2, record.z),
-        linearDamping: .08,
-        angularDamping: .08,
+        linearDamping: record.kind === 'hinge' ? .16 : .08,
+        angularDamping: record.kind === 'hinge' ? .22 : .08,
         allowSleep: true
       });
       const outward = Math.hypot(record.x, record.z) || 1;
@@ -1324,6 +1324,58 @@ export class BrickStudio {
 
       const mesh = this.brickLayer.children[index] as THREE.Group;
       this.physicsEntries.push({ body, mesh, height: h });
+    });
+
+    this.records.forEach((record, index) => {
+      if (record.kind !== 'hinge') return;
+      const hingeEntry = this.physicsEntries[index];
+      if (!hingeEntry) return;
+
+      let supportIndex = -1;
+      let best = Number.POSITIVE_INFINITY;
+      this.records.forEach((other, otherIndex) => {
+        if (otherIndex === index || other.y > record.y + .08) return;
+        const dx = other.x - record.x;
+        const dz = other.z - record.z;
+        const dy = Math.max(0, record.y - (other.y + partHeight(other)));
+        const score = dx * dx + dz * dz + dy * dy * 3;
+        if (score < best && score < 4.2) {
+          best = score;
+          supportIndex = otherIndex;
+        }
+      });
+
+      if (supportIndex < 0) return;
+      const supportEntry = this.physicsEntries[supportIndex];
+      if (!supportEntry) return;
+
+      const f = footprint(record);
+      const edge = (record.rotation ? f.w : f.d) * STUD * .32;
+      const hingePoint = new CANNON.Vec3(
+        hingeEntry.body.position.x,
+        record.y + BODY_H * .58,
+        hingeEntry.body.position.z - (record.rotation ? 0 : edge)
+      );
+      if (record.rotation) hingePoint.x -= edge;
+
+      const pivotA = hingePoint.vsub(supportEntry.body.position);
+      const pivotB = hingePoint.vsub(hingeEntry.body.position);
+      const axis = record.rotation
+        ? new CANNON.Vec3(0, 0, 1)
+        : new CANNON.Vec3(1, 0, 0);
+
+      const constraint = new CANNON.HingeConstraint(
+        supportEntry.body,
+        hingeEntry.body,
+        {
+          pivotA,
+          axisA: axis,
+          pivotB,
+          axisB: axis,
+          collideConnected: false
+        }
+      );
+      world.addConstraint(constraint);
     });
 
     this.physicsWorld = world;
