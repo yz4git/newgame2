@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { BODY_H, STUD, cloneSpec, createBrick, footprint, type BrickSpec } from './brickFactory';
+import * as CANNON from 'cannon-es';
+import {
+  BODY_H, STUD, cloneSpec, createPart, footprint, partHeight,
+  type BrickSpec, type PartKind
+} from './brickFactory';
 
 export interface BrickRecord extends BrickSpec {
   x: number;
@@ -7,7 +11,7 @@ export interface BrickRecord extends BrickSpec {
   z: number;
 }
 
-type Mode = 'build' | 'remove';
+export type Mode = 'build' | 'remove' | 'select' | 'move' | 'instruction';
 
 interface PointerInfo {
   x: number;
@@ -18,7 +22,26 @@ interface PointerInfo {
   lastY: number;
 }
 
-const SAVE_KEY = 'brick-lab-build-v1';
+interface DragSelection {
+  indices: number[];
+  startWorld: THREE.Vector3;
+  before: BrickRecord[];
+  origins: Map<number, { x: number; z: number }>;
+  moved: boolean;
+}
+
+interface InstructionStep {
+  label: string;
+  record: BrickRecord;
+}
+
+interface PhysicsEntry {
+  body: CANNON.Body;
+  mesh: THREE.Group;
+  height: number;
+}
+
+const slotKey = (slot: number): string => `brick-lab-slot-${slot}-v2`;
 
 export class BrickStudio {
   readonly renderer: THREE.WebGLRenderer;
@@ -35,11 +58,14 @@ export class BrickStudio {
   private brickLayer = new THREE.Group();
   private ghost: THREE.Group;
   private ghostValid = true;
-  private selected: BrickSpec = { w: 2, d: 4, color: 0xe53935, rotation: 0 };
+  private selected: BrickSpec = { kind: 'brick', w: 2, d: 4, color: 0xe53935, rotation: 0 };
   private mode: Mode = 'build';
   private records: BrickRecord[] = [];
   private undoStack: BrickRecord[][] = [];
   private redoStack: BrickRecord[][] = [];
+  private selectedIds = new Set<number>();
+  private selectionHelpers: THREE.Box3Helper[] = [];
+
   private pointers = new Map<number, PointerInfo>();
   private pinchDistance = 0;
   private orbitTarget = new THREE.Vector3(0, 1.2, 0);
@@ -47,6 +73,18 @@ export class BrickStudio {
   private polar = 0.92;
   private distance = 13.5;
   private lastTapMoved = false;
+  private dragSelection: DragSelection | null = null;
+
+  private instructionSteps: InstructionStep[] = [];
+  private instructionStep = 0;
+  private instructionGhost?: THREE.Group;
+  private instructionBackup?: BrickRecord[];
+
+  private physicsWorld?: CANNON.World;
+  private physicsEntries: PhysicsEntry[] = [];
+  private physicsSnapshot?: BrickRecord[];
+  private lastFrame = performance.now();
+
   private onChange?: (studio: BrickStudio) => void;
 
   constructor(container: HTMLElement, onChange?: (studio: BrickStudio) => void) {
@@ -72,8 +110,9 @@ export class BrickStudio {
     this.buildLighting();
     this.buildBaseplate();
     this.buildBackdrop();
+    this.buildInstructionSteps();
 
-    this.ghost = createBrick(this.selected, 0.46);
+    this.ghost = createPart(this.selected, 0.46);
     this.setGhostMaterial(false);
     this.scene.add(this.ghost);
 
@@ -86,62 +125,132 @@ export class BrickStudio {
   get pieceCount(): number { return this.records.length; }
   get currentMode(): Mode { return this.mode; }
   get currentSpec(): BrickSpec { return cloneSpec(this.selected); }
+  get selectionCount(): number { return this.selectedIds.size; }
+  get physicsActive(): boolean { return Boolean(this.physicsWorld); }
+  get instructionStatus(): { active: boolean; step: number; total: number; label: string } {
+    const step = this.instructionSteps[this.instructionStep];
+    return {
+      active: this.mode === 'instruction',
+      step: Math.min(this.instructionStep + 1, this.instructionSteps.length),
+      total: this.instructionSteps.length,
+      label: step?.label ?? 'COMPLETE'
+    };
+  }
 
   setSpec(next: Partial<BrickSpec>): void {
+    if (this.physicsActive) return;
     this.selected = { ...this.selected, ...next };
+    this.mode = 'build';
+    this.selectedIds.clear();
+    this.refreshSelectionVisual();
     this.rebuildGhost();
-    this.onChange?.(this);
+    this.notify();
+  }
+
+  setPartKind(kind: PartKind): void {
+    const defaults: Record<PartKind, { w: number; d: number }> = {
+      brick: { w: 2, d: 4 },
+      slope: { w: 2, d: 2 },
+      hinge: { w: 2, d: 2 },
+      wheel: { w: 2, d: 2 },
+      window: { w: 2, d: 1 },
+      roof: { w: 2, d: 4 }
+    };
+    this.setSpec({ kind, ...defaults[kind] });
   }
 
   rotateSelection(): void {
+    if (this.physicsActive) return;
+    if (this.selectedIds.size && (this.mode === 'select' || this.mode === 'move')) {
+      this.pushHistory();
+      for (const id of this.selectedIds) {
+        const record = this.records[id];
+        if (record) record.rotation = record.rotation ? 0 : 1;
+      }
+      this.rebuildAll();
+      this.notify();
+      return;
+    }
+
     this.selected.rotation = this.selected.rotation ? 0 : 1;
     this.rebuildGhost();
-    this.onChange?.(this);
+    this.notify();
   }
 
   setMode(mode: Mode): void {
+    if (this.physicsActive) return;
+    if (this.mode === 'instruction' && mode !== 'instruction') this.stopInstructions(true);
     this.mode = mode;
+    if (mode !== 'select' && mode !== 'move') {
+      this.selectedIds.clear();
+      this.refreshSelectionVisual();
+    }
     this.ghost.visible = mode === 'build';
-    this.onChange?.(this);
+    this.notify();
   }
 
   undo(): void {
+    if (this.physicsActive || this.mode === 'instruction') return;
     const prev = this.undoStack.pop();
     if (!prev) return;
     this.redoStack.push(this.snapshot());
-    this.restore(prev, false);
+    this.restore(prev);
   }
 
   redo(): void {
+    if (this.physicsActive || this.mode === 'instruction') return;
     const next = this.redoStack.pop();
     if (!next) return;
     this.undoStack.push(this.snapshot());
-    this.restore(next, false);
+    this.restore(next);
   }
 
-  save(): void {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(this.records));
-    this.onChange?.(this);
-  }
-
-  load(): boolean {
+  saveSlot(slot: number): boolean {
+    if (this.physicsActive) return false;
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return false;
-      const data = JSON.parse(raw) as BrickRecord[];
-      if (!Array.isArray(data)) return false;
-      this.pushHistory();
-      this.restore(data, false);
+      localStorage.setItem(slotKey(slot), JSON.stringify({
+        version: 2,
+        savedAt: new Date().toISOString(),
+        records: this.records
+      }));
+      this.notify();
       return true;
     } catch {
       return false;
     }
   }
 
+  loadSlot(slot: number): boolean {
+    if (this.physicsActive) return false;
+    try {
+      const raw = localStorage.getItem(slotKey(slot));
+      if (!raw) return false;
+      const payload = JSON.parse(raw) as { records?: BrickRecord[] };
+      if (!Array.isArray(payload.records)) return false;
+      this.pushHistory();
+      this.restore(payload.records);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  slotInfo(slot: number): string {
+    try {
+      const raw = localStorage.getItem(slotKey(slot));
+      if (!raw) return 'EMPTY';
+      const payload = JSON.parse(raw) as { records?: BrickRecord[]; savedAt?: string };
+      const count = Array.isArray(payload.records) ? payload.records.length : 0;
+      return `${count} PCS`;
+    } catch {
+      return 'ERROR';
+    }
+  }
+
   clear(): void {
-    if (!this.records.length) return;
+    if (this.physicsActive || !this.records.length) return;
     this.pushHistory();
-    this.restore([], false);
+    this.restore([]);
   }
 
   resetView(): void {
@@ -152,53 +261,162 @@ export class BrickStudio {
     this.updateCamera();
   }
 
+  selectAll(): void {
+    if (this.physicsActive) return;
+    this.mode = 'select';
+    this.selectedIds = new Set(this.records.map((_, i) => i));
+    this.refreshSelectionVisual();
+    this.notify();
+  }
+
+  clearSelection(): void {
+    this.selectedIds.clear();
+    this.refreshSelectionVisual();
+    this.notify();
+  }
+
+  copySelection(): boolean {
+    if (this.physicsActive || !this.selectedIds.size) return false;
+    const source = [...this.selectedIds].map(id => this.records[id]).filter(Boolean);
+    if (!source.length) return false;
+
+    for (let attempt = 1; attempt <= 8; attempt++) {
+      const dx = STUD * attempt;
+      const dz = STUD * attempt;
+      const copies = source.map(record => ({ ...record, x: record.x + dx, z: record.z + dz }));
+      if (copies.some(record => Math.abs(record.x) > 9 || Math.abs(record.z) > 9)) continue;
+      if (!this.recordsCanCoexist(copies, this.records)) continue;
+
+      this.pushHistory();
+      const start = this.records.length;
+      this.records.push(...copies);
+      this.selectedIds = new Set(copies.map((_, index) => start + index));
+      this.rebuildAll();
+      this.mode = 'move';
+      this.notify();
+      return true;
+    }
+    return false;
+  }
+
+  liftSelection(layers: number): boolean {
+    if (this.physicsActive || !this.selectedIds.size) return false;
+    const dy = BODY_H * layers;
+    const copies = this.records.map(r => ({ ...r }));
+    for (const id of this.selectedIds) {
+      if (copies[id]) copies[id].y = Math.max(0, copies[id].y + dy);
+    }
+    const moving = [...this.selectedIds].map(id => copies[id]).filter(Boolean);
+    const fixed = copies.filter((_, index) => !this.selectedIds.has(index));
+    if (!this.recordsCanCoexist(moving, fixed)) return false;
+
+    this.pushHistory();
+    this.records = copies;
+    this.rebuildAll();
+    this.notify();
+    return true;
+  }
+
   demoHouse(): void {
+    if (this.physicsActive) return;
     this.pushHistory();
     const red = 0xe53935;
     const blue = 0x1e6bd6;
-    const yellow = 0xf5c62b;
     const white = 0xf4f5f7;
     const dark = 0x30343b;
     const list: BrickRecord[] = [];
 
-    const add = (w: number, d: number, x: number, y: number, z: number, color: number, rotation: 0 | 1 = 0) => {
-      list.push({ w, d, x, y, z, color, rotation });
-    };
-
-    for (let z = -3.2; z <= 3.2; z += 1.6) {
-      add(2, 4, -3.6, 0, z, dark, 1);
-      add(2, 4, 3.6, 0, z, dark, 1);
-    }
-    for (let x = -2.4; x <= 2.4; x += 1.6) {
-      add(2, 4, x, 0, -3.6, dark, 0);
-      add(2, 4, x, 0, 3.6, dark, 0);
-    }
-
-    for (let layer = 1; layer <= 4; layer++) {
-      const y = layer * BODY_H;
-      const c = layer % 2 ? red : white;
-      for (let x = -2.4; x <= 2.4; x += 1.6) {
-        if (!(layer <= 2 && Math.abs(x) < 0.9)) add(2, 4, x, y, -3.2, c, 0);
-        add(2, 4, x, y, 3.2, c, 0);
-      }
-      for (let z = -1.6; z <= 1.6; z += 1.6) {
-        if (!(layer === 2 && z === 0)) add(2, 4, -3.2, y, z, c, 1);
-        add(2, 4, 3.2, y, z, c, 1);
-      }
-    }
+    const add = (
+      kind: PartKind, w: number, d: number, x: number, y: number, z: number,
+      color: number, rotation: 0 | 1 = 0
+    ) => list.push({ kind, w, d, x, y, z, color, rotation });
 
     for (let x = -2.4; x <= 2.4; x += 1.6) {
-      add(2, 4, x, BODY_H * 5, -2.0, blue, 0);
-      add(2, 4, x, BODY_H * 5, 2.0, blue, 0);
-      add(2, 4, x, BODY_H * 6, -1.2, yellow, 0);
-      add(2, 4, x, BODY_H * 6, 1.2, yellow, 0);
-      add(2, 4, x, BODY_H * 7, 0, red, 0);
+      add('brick', 2, 4, x, 0, -2.4, dark);
+      add('brick', 2, 4, x, 0, 2.4, dark);
+      add('brick', 2, 4, x, BODY_H, -2.4, red);
+      add('brick', 2, 4, x, BODY_H, 2.4, red);
     }
+    for (const x of [-2.4, 2.4]) {
+      for (const z of [-.8, .8]) {
+        add('brick', 2, 4, x, BODY_H, z, red, 1);
+      }
+    }
+    add('window', 2, 1, -2.4, BODY_H * 2, 0, white, 1);
+    add('window', 2, 1, 2.4, BODY_H * 2, 0, white, 1);
+    add('hinge', 2, 2, 0, BODY_H * 2, 2.4, blue);
+    add('slope', 2, 2, -1.2, BODY_H * 2, -2.4, blue);
+    add('slope', 2, 2, 1.2, BODY_H * 2, -2.4, blue, 1);
+    add('roof', 2, 4, -1.6, BODY_H * 3.4, 0, blue);
+    add('roof', 2, 4, 1.6, BODY_H * 3.4, 0, blue);
 
-    this.restore(list, false);
+    this.restore(list);
     this.orbitTarget.set(0, 1.4, 0);
     this.distance = 15;
     this.updateCamera();
+  }
+
+  startInstructions(): void {
+    if (this.physicsActive) return;
+    if (this.mode !== 'instruction') this.instructionBackup = this.snapshot();
+    this.records = [];
+    this.selectedIds.clear();
+    this.rebuildAll();
+    this.mode = 'instruction';
+    this.instructionStep = 0;
+    this.updateInstructionGhost();
+    this.notify();
+  }
+
+  instructionNext(): boolean {
+    if (this.mode !== 'instruction') return false;
+    const step = this.instructionSteps[this.instructionStep];
+    if (!step) return false;
+    this.records.push({ ...step.record });
+    this.rebuildAll();
+    this.instructionStep++;
+    this.updateInstructionGhost();
+    this.notify();
+    return true;
+  }
+
+  instructionPrev(): boolean {
+    if (this.mode !== 'instruction' || this.instructionStep <= 0) return false;
+    this.instructionStep--;
+    this.records.pop();
+    this.rebuildAll();
+    this.updateInstructionGhost();
+    this.notify();
+    return true;
+  }
+
+  keepInstructionModel(): void {
+    if (this.mode !== 'instruction') return;
+    this.removeInstructionGhost();
+    this.instructionBackup = undefined;
+    this.mode = 'select';
+    this.selectedIds.clear();
+    this.pushHistorySnapshot([]);
+    this.notify();
+  }
+
+  stopInstructions(restoreOriginal = true): void {
+    if (this.mode !== 'instruction') return;
+    this.removeInstructionGhost();
+    if (restoreOriginal && this.instructionBackup) {
+      this.records = this.instructionBackup.map(r => ({ ...r }));
+      this.rebuildAll();
+    }
+    this.instructionBackup = undefined;
+    this.instructionStep = 0;
+    this.mode = 'build';
+    this.rebuildGhost();
+    this.notify();
+  }
+
+  toggleCollapse(): void {
+    if (this.physicsActive) this.restoreCollapse();
+    else this.startCollapse();
   }
 
   resize(): void {
@@ -211,9 +429,12 @@ export class BrickStudio {
     this.renderer.setSize(rect.width, rect.height, false);
   }
 
+  private notify(): void {
+    this.onChange?.(this);
+  }
+
   private buildLighting(): void {
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x8795aa, 2.4);
-    this.scene.add(hemi);
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8795aa, 2.4));
 
     const sun = new THREE.DirectionalLight(0xffffff, 3.2);
     sun.position.set(8, 14, 7);
@@ -241,14 +462,13 @@ export class BrickStudio {
 
     const studGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.055, 16);
     const studMat = new THREE.MeshStandardMaterial({ color: 0xd9e1ea, roughness: 0.58 });
-    const count = 24 * 24;
-    const studs = new THREE.InstancedMesh(studGeo, studMat, count);
-    const m = new THREE.Matrix4();
-    let i = 0;
+    const studs = new THREE.InstancedMesh(studGeo, studMat, 24 * 24);
+    const matrix = new THREE.Matrix4();
+    let index = 0;
     for (let x = 0; x < 24; x++) {
       for (let z = 0; z < 24; z++) {
-        m.makeTranslation((x - 11.5) * STUD, 0.027, (z - 11.5) * STUD);
-        studs.setMatrixAt(i++, m);
+        matrix.makeTranslation((x - 11.5) * STUD, 0.027, (z - 11.5) * STUD);
+        studs.setMatrixAt(index++, matrix);
       }
     }
     studs.receiveShadow = true;
@@ -256,8 +476,8 @@ export class BrickStudio {
 
     const grid = new THREE.GridHelper(19.2, 24, 0xa6b5c5, 0xbec9d5);
     grid.position.y = 0.061;
-    const mats = Array.isArray(grid.material) ? grid.material : [grid.material];
-    mats.forEach(mat => { mat.transparent = true; mat.opacity = 0.26; });
+    const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
+    materials.forEach(mat => { mat.transparent = true; mat.opacity = 0.26; });
     this.scene.add(grid);
   }
 
@@ -280,11 +500,38 @@ export class BrickStudio {
     this.scene.add(ring);
   }
 
+  private buildInstructionSteps(): void {
+    const black = 0x30343b;
+    const blue = 0x1e6bd6;
+    const yellow = 0xf5c62b;
+    const white = 0xf4f5f7;
+    const orange = 0xf57c21;
+    const red = 0xe53935;
+
+    const make = (
+      label: string, kind: PartKind, w: number, d: number,
+      x: number, y: number, z: number, color: number, rotation: 0 | 1 = 0
+    ): InstructionStep => ({ label, record: { kind, w, d, x, y, z, color, rotation } });
+
+    this.instructionSteps = [
+      make('Rear wheel module', 'wheel', 2, 2, 0, 0, 1.2, black),
+      make('Front wheel module', 'wheel', 2, 2, 0, 0, -1.2, black),
+      make('Main chassis', 'brick', 2, 4, 0, BODY_H * .65, 0, blue),
+      make('Front slope', 'slope', 2, 2, 0, BODY_H * 1.65, -1.0, yellow),
+      make('Cabin window', 'window', 2, 1, 0, BODY_H * 1.65, .65, white),
+      make('Opening rear hinge', 'hinge', 2, 2, 0, BODY_H * 1.65, 1.55, orange),
+      make('Cabin roof', 'roof', 2, 2, 0, BODY_H * 4.15, .65, red)
+    ];
+  }
+
   private bindPointer(): void {
     this.canvas.style.touchAction = 'none';
 
     this.canvas.addEventListener('pointerdown', event => {
+      if (this.physicsActive || this.mode === 'instruction') return;
       this.canvas.setPointerCapture(event.pointerId);
+      this.updatePointerNdc(event.clientX, event.clientY);
+
       const info: PointerInfo = {
         x: event.clientX, y: event.clientY,
         startX: event.clientX, startY: event.clientY,
@@ -293,13 +540,41 @@ export class BrickStudio {
       this.pointers.set(event.pointerId, info);
       this.lastTapMoved = false;
 
+      if (this.mode === 'move' && this.pointers.size === 1) {
+        const id = this.partIdAtPointer();
+        if (id !== null) {
+          if (!this.selectedIds.has(id)) {
+            this.selectedIds = new Set([id]);
+            this.refreshSelectionVisual();
+            this.notify();
+          }
+          const startWorld = this.pointerOnPlane(0);
+          if (startWorld) {
+            const origins = new Map<number, { x: number; z: number }>();
+            for (const selectedId of this.selectedIds) {
+              const record = this.records[selectedId];
+              if (record) origins.set(selectedId, { x: record.x, z: record.z });
+            }
+            this.dragSelection = {
+              indices: [...this.selectedIds],
+              startWorld,
+              before: this.snapshot(),
+              origins,
+              moved: false
+            };
+          }
+        }
+      }
+
       if (this.pointers.size === 2) {
+        this.dragSelection = null;
         const p = [...this.pointers.values()];
         this.pinchDistance = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
       }
     });
 
     this.canvas.addEventListener('pointermove', event => {
+      if (this.physicsActive || this.mode === 'instruction') return;
       const info = this.pointers.get(event.pointerId);
       if (!info) {
         this.updatePointerNdc(event.clientX, event.clientY);
@@ -314,9 +589,14 @@ export class BrickStudio {
       info.lastX = event.clientX;
       info.lastY = event.clientY;
 
-      if (Math.hypot(event.clientX - info.startX, event.clientY - info.startY) > 7) this.lastTapMoved = true;
+      const travel = Math.hypot(event.clientX - info.startX, event.clientY - info.startY);
+      if (travel > 7) this.lastTapMoved = true;
 
-      if (this.pointers.size === 1) {
+      if (this.pointers.size === 1 && this.dragSelection) {
+        this.updatePointerNdc(event.clientX, event.clientY);
+        const point = this.pointerOnPlane(0);
+        if (point) this.moveDraggedSelection(point);
+      } else if (this.pointers.size === 1) {
         this.azimuth -= dx * 0.007;
         this.polar = THREE.MathUtils.clamp(this.polar + dy * 0.006, 0.32, 1.42);
         this.updateCamera();
@@ -335,13 +615,23 @@ export class BrickStudio {
       const info = this.pointers.get(event.pointerId);
       if (!info) return;
       const wasTap = !this.lastTapMoved && Math.hypot(event.clientX - info.startX, event.clientY - info.startY) < 8;
+
+      if (this.dragSelection) {
+        if (this.dragSelection.moved) {
+          this.pushHistorySnapshot(this.dragSelection.before);
+          this.notify();
+        }
+        this.dragSelection = null;
+      }
+
       this.pointers.delete(event.pointerId);
       if (this.pointers.size < 2) this.pinchDistance = 0;
 
-      if (wasTap) {
+      if (wasTap && !this.physicsActive) {
         this.updatePointerNdc(event.clientX, event.clientY);
         if (this.mode === 'remove') this.removeAtPointer();
-        else this.placeAtPointer();
+        else if (this.mode === 'select') this.toggleSelectionAtPointer();
+        else if (this.mode === 'build') this.placeAtPointer();
       }
     };
 
@@ -361,6 +651,12 @@ export class BrickStudio {
     this.pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   }
 
+  private pointerOnPlane(y: number): THREE.Vector3 | null {
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
+    return this.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+  }
+
   private getIntersections(): THREE.Intersection[] {
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
     const targets: THREE.Object3D[] = [this.ground];
@@ -370,28 +666,38 @@ export class BrickStudio {
     return this.raycaster.intersectObjects(targets, false);
   }
 
-  private brickRootFrom(object: THREE.Object3D): THREE.Group | null {
+  private partRootFrom(object: THREE.Object3D): THREE.Group | null {
     const direct = object.userData.brickRoot as THREE.Group | undefined;
     if (direct) return direct;
     let node: THREE.Object3D | null = object;
     while (node) {
-      if (node.userData.kind === 'brick') return node as THREE.Group;
+      if (node.userData.kind === 'part') return node as THREE.Group;
       node = node.parent;
     }
     return null;
+  }
+
+  private partIdAtPointer(): number | null {
+    const hit = this.getIntersections().find(i => this.partRootFrom(i.object));
+    if (!hit) return null;
+    const root = this.partRootFrom(hit.object);
+    if (!root) return null;
+    const id = Number(root.userData.recordId);
+    return Number.isInteger(id) ? id : null;
   }
 
   private placementFromPointer(): { x: number; y: number; z: number } | null {
     const hit = this.getIntersections()[0];
     if (!hit) return null;
 
-    const root = this.brickRootFrom(hit.object);
-    const y = root ? root.position.y + BODY_H : 0;
+    const root = this.partRootFrom(hit.object);
+    const rootSpec = root?.userData.spec as BrickSpec | undefined;
+    const y = root && rootSpec ? root.position.y + partHeight(rootSpec) : 0;
     const f = footprint(this.selected);
     const x = this.snapCenter(hit.point.x, f.w);
     const z = this.snapCenter(hit.point.z, f.d);
 
-    if (Math.abs(x) > 9 || Math.abs(z) > 9 || y > BODY_H * 20) return null;
+    if (Math.abs(x) > 9 || Math.abs(z) > 9 || y > BODY_H * 22) return null;
     return { x, y, z };
   }
 
@@ -400,19 +706,36 @@ export class BrickStudio {
     return Math.round((value - offset) / STUD) * STUD + offset;
   }
 
-  private candidateCollides(pos: { x: number; y: number; z: number }, spec = this.selected): boolean {
-    const f = footprint(spec);
-    const halfX = f.w * STUD / 2 - 0.035;
-    const halfZ = f.d * STUD / 2 - 0.035;
+  private recordCollides(a: BrickRecord, b: BrickRecord): boolean {
+    const af = footprint(a);
+    const bf = footprint(b);
+    const aHalfX = af.w * STUD / 2 - .035;
+    const aHalfZ = af.d * STUD / 2 - .035;
+    const bHalfX = bf.w * STUD / 2 - .035;
+    const bHalfZ = bf.d * STUD / 2 - .035;
+    const horizontal = Math.abs(a.x - b.x) < aHalfX + bHalfX &&
+      Math.abs(a.z - b.z) < aHalfZ + bHalfZ;
+    if (!horizontal) return false;
+    const aTop = a.y + partHeight(a);
+    const bTop = b.y + partHeight(b);
+    return a.y < bTop - .04 && aTop > b.y + .04;
+  }
 
-    return this.records.some(record => {
-      if (Math.abs(record.y - pos.y) > 0.05) return false;
-      const rf = footprint(record);
-      const rHalfX = rf.w * STUD / 2 - 0.035;
-      const rHalfZ = rf.d * STUD / 2 - 0.035;
-      return Math.abs(record.x - pos.x) < halfX + rHalfX &&
-             Math.abs(record.z - pos.z) < halfZ + rHalfZ;
-    });
+  private recordsCanCoexist(moving: BrickRecord[], fixed: BrickRecord[]): boolean {
+    for (let i = 0; i < moving.length; i++) {
+      const record = moving[i];
+      if (Math.abs(record.x) > 9 || Math.abs(record.z) > 9 || record.y < 0) return false;
+      if (fixed.some(other => this.recordCollides(record, other))) return false;
+      for (let j = 0; j < i; j++) {
+        if (this.recordCollides(record, moving[j])) return false;
+      }
+    }
+    return true;
+  }
+
+  private candidateCollides(pos: { x: number; y: number; z: number }, spec = this.selected): boolean {
+    const candidate: BrickRecord = { ...cloneSpec(spec), ...pos };
+    return this.records.some(record => this.recordCollides(candidate, record));
   }
 
   private placeAtPointer(): void {
@@ -422,37 +745,71 @@ export class BrickStudio {
     this.pushHistory();
     const record: BrickRecord = { ...cloneSpec(this.selected), ...pos };
     this.records.push(record);
-    this.addRecordMesh(record);
-    this.onChange?.(this);
+    this.addRecordMesh(record, this.records.length - 1);
+    this.notify();
   }
 
   private removeAtPointer(): void {
-    const hit = this.getIntersections().find(i => this.brickRootFrom(i.object));
-    if (!hit) return;
-    const root = this.brickRootFrom(hit.object);
-    if (!root) return;
-    const id = root.userData.recordId as number;
-    if (!Number.isInteger(id)) return;
-
+    const id = this.partIdAtPointer();
+    if (id === null) return;
     this.pushHistory();
     this.records.splice(id, 1);
+    this.selectedIds.clear();
     this.rebuildAll();
-    this.onChange?.(this);
+    this.notify();
   }
 
-  private addRecordMesh(record: BrickRecord): void {
-    const group = createBrick(record);
+  private toggleSelectionAtPointer(): void {
+    const id = this.partIdAtPointer();
+    if (id === null) return;
+    if (this.selectedIds.has(id)) this.selectedIds.delete(id);
+    else this.selectedIds.add(id);
+    this.refreshSelectionVisual();
+    this.notify();
+  }
+
+  private moveDraggedSelection(point: THREE.Vector3): void {
+    const drag = this.dragSelection;
+    if (!drag) return;
+    const dx = Math.round((point.x - drag.startWorld.x) / STUD) * STUD;
+    const dz = Math.round((point.z - drag.startWorld.z) / STUD) * STUD;
+    if (Math.abs(dx) < .001 && Math.abs(dz) < .001) return;
+
+    const candidateRecords = drag.indices.map(id => {
+      const record = this.records[id];
+      const origin = drag.origins.get(id);
+      return record && origin ? { ...record, x: origin.x + dx, z: origin.z + dz } : null;
+    }).filter((record): record is BrickRecord => Boolean(record));
+    const fixed = this.records.filter((_, index) => !drag.indices.includes(index));
+    if (!this.recordsCanCoexist(candidateRecords, fixed)) return;
+
+    for (let i = 0; i < drag.indices.length; i++) {
+      const id = drag.indices[i];
+      const next = candidateRecords[i];
+      if (!next || !this.records[id]) continue;
+      this.records[id].x = next.x;
+      this.records[id].z = next.z;
+      const group = this.brickLayer.children[id] as THREE.Group | undefined;
+      if (group) group.position.set(next.x, next.y, next.z);
+    }
+    drag.moved = true;
+    this.refreshSelectionVisual();
+  }
+
+  private addRecordMesh(record: BrickRecord, index: number): void {
+    const group = createPart(record);
     group.position.set(record.x, record.y, record.z);
-    group.userData.recordId = this.brickLayer.children.length;
-    group.traverse(obj => {
-      obj.userData.brickRoot = group;
-    });
+    group.userData.recordId = index;
+    group.userData.spec = cloneSpec(record);
+    group.traverse(obj => { obj.userData.brickRoot = group; });
     this.brickLayer.add(group);
   }
 
   private rebuildAll(): void {
     while (this.brickLayer.children.length) this.brickLayer.remove(this.brickLayer.children[0]);
-    this.records.forEach(record => this.addRecordMesh(record));
+    this.records.forEach((record, index) => this.addRecordMesh(record, index));
+    this.selectedIds = new Set([...this.selectedIds].filter(id => id < this.records.length));
+    this.refreshSelectionVisual();
   }
 
   private snapshot(): BrickRecord[] {
@@ -460,25 +817,30 @@ export class BrickStudio {
   }
 
   private pushHistory(): void {
-    this.undoStack.push(this.snapshot());
+    this.pushHistorySnapshot(this.snapshot());
+  }
+
+  private pushHistorySnapshot(snapshot: BrickRecord[]): void {
+    this.undoStack.push(snapshot.map(r => ({ ...r })));
     if (this.undoStack.length > 60) this.undoStack.shift();
     this.redoStack.length = 0;
   }
 
-  private restore(records: BrickRecord[], notify = true): void {
+  private restore(records: BrickRecord[]): void {
     this.records = records.map(r => ({
+      kind: (r.kind || 'brick') as PartKind,
       w: Number(r.w), d: Number(r.d), color: Number(r.color),
       rotation: r.rotation ? 1 : 0,
       x: Number(r.x), y: Number(r.y), z: Number(r.z)
     }));
+    this.selectedIds.clear();
     this.rebuildAll();
-    if (notify) this.onChange?.(this);
-    else this.onChange?.(this);
+    this.notify();
   }
 
   private rebuildGhost(): void {
     this.scene.remove(this.ghost);
-    this.ghost = createBrick(this.selected, 0.46);
+    this.ghost = createPart(this.selected, 0.46);
     this.scene.add(this.ghost);
     this.updateGhost();
   }
@@ -487,15 +849,18 @@ export class BrickStudio {
     this.ghost.traverse(obj => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      mat.color.setHex(invalid ? 0xff3158 : this.selected.color);
-      mat.opacity = invalid ? 0.32 : 0.46;
-      mat.depthWrite = false;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const raw of materials) {
+        const mat = raw as THREE.MeshStandardMaterial;
+        if ('color' in mat) mat.color.setHex(invalid ? 0xff3158 : this.selected.color);
+        if ('opacity' in mat) mat.opacity = invalid ? .28 : .46;
+        if ('depthWrite' in mat) mat.depthWrite = false;
+      }
     });
   }
 
   private updateGhost(): void {
-    if (this.mode !== 'build') {
+    if (this.mode !== 'build' || this.physicsActive) {
       this.ghost.visible = false;
       return;
     }
@@ -514,6 +879,125 @@ export class BrickStudio {
     }
   }
 
+  private refreshSelectionVisual(): void {
+    for (const helper of this.selectionHelpers) this.scene.remove(helper);
+    this.selectionHelpers = [];
+    if (this.physicsActive) return;
+
+    for (const id of this.selectedIds) {
+      const group = this.brickLayer.children[id];
+      if (!group) continue;
+      const helper = new THREE.Box3Helper(new THREE.Box3().setFromObject(group), 0x1967d2);
+      helper.renderOrder = 20;
+      this.scene.add(helper);
+      this.selectionHelpers.push(helper);
+    }
+  }
+
+  private updateInstructionGhost(): void {
+    this.removeInstructionGhost();
+    const step = this.instructionSteps[this.instructionStep];
+    if (!step || this.mode !== 'instruction') return;
+    this.instructionGhost = createPart(step.record, .32);
+    this.instructionGhost.position.set(step.record.x, step.record.y, step.record.z);
+    this.instructionGhost.traverse(obj => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const material of materials) {
+        if ('emissive' in material) {
+          const standard = material as THREE.MeshStandardMaterial;
+          standard.emissive.setHex(0x45b7ff);
+          standard.emissiveIntensity = .5;
+        }
+      }
+    });
+    this.scene.add(this.instructionGhost);
+  }
+
+  private removeInstructionGhost(): void {
+    if (!this.instructionGhost) return;
+    this.scene.remove(this.instructionGhost);
+    this.instructionGhost = undefined;
+  }
+
+  private startCollapse(): void {
+    if (!this.records.length || this.mode === 'instruction') return;
+    this.physicsSnapshot = this.snapshot();
+    this.selectedIds.clear();
+    this.refreshSelectionVisual();
+    this.ghost.visible = false;
+
+    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+    world.allowSleep = true;
+    world.defaultContactMaterial.friction = .42;
+    world.defaultContactMaterial.restitution = .08;
+
+    const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    groundBody.position.y = -.02;
+    world.addBody(groundBody);
+
+    this.physicsEntries = [];
+    this.records.forEach((record, index) => {
+      const f = footprint(record);
+      const h = partHeight(record);
+      const body = new CANNON.Body({
+        mass: Math.max(.22, f.w * f.d * .13),
+        shape: new CANNON.Box(new CANNON.Vec3(
+          f.w * STUD / 2 - .035,
+          Math.max(.12, h / 2),
+          f.d * STUD / 2 - .035
+        )),
+        position: new CANNON.Vec3(record.x, record.y + h / 2, record.z),
+        linearDamping: .08,
+        angularDamping: .08,
+        allowSleep: true
+      });
+      const outward = Math.hypot(record.x, record.z) || 1;
+      body.velocity.set(record.x / outward * .22 + (Math.random() - .5) * .28, .15, record.z / outward * .22 + (Math.random() - .5) * .28);
+      body.angularVelocity.set((Math.random() - .5) * .5, (Math.random() - .5) * .3, (Math.random() - .5) * .5);
+      world.addBody(body);
+
+      const mesh = this.brickLayer.children[index] as THREE.Group;
+      this.physicsEntries.push({ body, mesh, height: h });
+    });
+
+    this.physicsWorld = world;
+    this.notify();
+  }
+
+  private restoreCollapse(): void {
+    this.physicsWorld = undefined;
+    this.physicsEntries = [];
+    if (this.physicsSnapshot) {
+      this.records = this.physicsSnapshot.map(r => ({ ...r }));
+      this.rebuildAll();
+    }
+    this.physicsSnapshot = undefined;
+    this.ghost.visible = this.mode === 'build';
+    this.notify();
+  }
+
+  private updatePhysics(delta: number): void {
+    const world = this.physicsWorld;
+    if (!world) return;
+    world.step(1 / 60, Math.min(delta, .05), 3);
+    for (const entry of this.physicsEntries) {
+      entry.mesh.position.set(
+        entry.body.position.x,
+        entry.body.position.y - entry.height / 2,
+        entry.body.position.z
+      );
+      entry.mesh.quaternion.set(
+        entry.body.quaternion.x,
+        entry.body.quaternion.y,
+        entry.body.quaternion.z,
+        entry.body.quaternion.w
+      );
+    }
+  }
+
   private updateCamera(): void {
     const sin = Math.sin(this.polar);
     this.camera.position.set(
@@ -526,7 +1010,12 @@ export class BrickStudio {
 
   private animate = (): void => {
     requestAnimationFrame(this.animate);
-    if (this.pointers.size === 0) this.updateGhost();
+    const now = performance.now();
+    const delta = (now - this.lastFrame) / 1000;
+    this.lastFrame = now;
+
+    this.updatePhysics(delta);
+    if (this.pointers.size === 0 && !this.physicsActive) this.updateGhost();
     this.renderer.render(this.scene, this.camera);
   };
 }
