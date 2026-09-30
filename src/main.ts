@@ -68,6 +68,10 @@ ui.innerHTML = `
   </header>
 
   <aside class="toolbox">
+    <div class="toolbox-head">
+      <strong>BUILD TOOLS</strong>
+      <button data-action="tools" aria-label="Hide build tools">‹</button>
+    </div>
     <section>
       <label>PART</label>
       <div class="part-grid"></div>
@@ -148,6 +152,7 @@ ui.innerHTML = `
       </div>
     </section>
   </aside>
+  <button class="tools-open-tab" data-action="tools">TOOLS</button>
 
   <aside class="instruction-panel">
     <small class="instruction-model-title">STEP BUILD // MINI ROVER</small>
@@ -247,7 +252,7 @@ ui.innerHTML = `
         <em>WINDOW · ROOF · HINGE · SLOPE</em>
       </button>
     </div>
-    <p>サンプル読込後は、SELECT / COPY / DRIVE TEST / COLLAPSE / SAVE SLOT をそのまま使用できます。</p>
+    <p>車両サンプルは DRIVE TEST 対応。ジオラマは編集・SAVE・COLLAPSE向けで、全景をそのまま車両化しません。</p>
   </aside>
 
   <div class="hint">BUILD: tap place · SELECT: multi-select · MOVE: drag selected · DRAG empty: orbit · PINCH: zoom</div>
@@ -292,6 +297,17 @@ const instructionModelTitle = ui.querySelector('.instruction-model-title') as HT
 const driveStats = ui.querySelector('.drive-stats') as HTMLElement;
 const programSequence = ui.querySelector('.program-sequence') as HTMLElement;
 const toast = ui.querySelector('.toast') as HTMLElement;
+const toolsButtons = ui.querySelectorAll<HTMLButtonElement>('[data-action="tools"]');
+let toolsOpen = true;
+
+function setToolsOpen(open: boolean): void {
+  toolsOpen = open;
+  ui.classList.toggle('tools-collapsed', !open);
+  toolsButtons.forEach(button => {
+    if (button.classList.contains('tools-open-tab')) button.textContent = 'TOOLS';
+    else button.setAttribute('aria-label', open ? 'Hide build tools' : 'Show build tools');
+  });
+}
 let toastTimer = 0;
 
 function showToast(text: string): void {
@@ -451,14 +467,30 @@ ui.querySelector('[data-action="program-clear"]')?.addEventListener('click', () 
   showToast(studio.clearProgramCommands() ? 'PROGRAM CLEARED' : 'PROGRAM IS EMPTY');
 });
 
+toolsButtons.forEach(button => {
+  button.addEventListener('click', () => setToolsOpen(!toolsOpen));
+});
+
 ui.querySelector('[data-action="drive"]')?.addEventListener('click', () => {
+  const started = studio.toggleDrive();
   showToast(
-    studio.toggleDrive()
+    started
       ? (studio.driveActive ? 'PHYSICS DRIVE STARTED' : 'BUILD POSITION RESTORED')
-      : 'ADD 2 WHEELS OR A PROPELLER'
+      : studio.driveBlockedReason
   );
 });
-ui.querySelector('[data-action="physics"]')?.addEventListener('click', () => studio.toggleCollapse());
+ui.querySelector('[data-action="physics"]')?.addEventListener('click', () => {
+  studio.toggleCollapse();
+  if (studio.physicsActive) {
+    showToast(
+      studio.collapseBodyCount < studio.pieceCount
+        ? `PERFORMANCE COLLAPSE // ${studio.collapseBodyCount}/${studio.pieceCount} ACTIVE`
+        : 'COLLAPSE STARTED'
+    );
+  } else {
+    showToast('BUILD RESTORED');
+  }
+});
 
 ui.querySelectorAll<HTMLButtonElement>('[data-save]').forEach(button => {
   button.addEventListener('click', () => {
@@ -537,6 +569,7 @@ ui.querySelectorAll<HTMLButtonElement>('[data-sample]').forEach(button => {
       | 'skyport' | 'harbor' | 'alpine' | 'megaforge';
     if (studio.loadSample(id)) {
       setSamplesOpen(false);
+      setToolsOpen(false);
       showToast(button.querySelector('b')?.textContent + ' LOADED');
     } else {
       showToast('STOP SIMULATION FIRST');
