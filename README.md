@@ -68,3 +68,16 @@ npm run build
 ```
 
 Public path: `/newgame2/`
+
+
+## Large integrated samples
+
+The Sample Gallery includes multiple large builds that combine the simulator systems:
+
+- **Titan Hauler** — 16-wheel heavy transporter with multiple motors, meshed gears, propellers, programmable hinges and a visual program.
+- **Rescue Command** — articulated rescue vehicle with multiple doors/hinges, suspension, motors, gears, windows and automation.
+- **Gearworks Fortress** — large mechanical fortress built to showcase gear trains, powered components, hinges and collapse simulation.
+- **Power Explorer** — dense programmable test vehicle combining suspension, motors, gears, propellers, hinges and a visual command sequence.
+- **Starter House** — smaller architecture sample using windows, roof pieces, slopes and hinges.
+
+Samples can be edited, copied, saved to slots, driven when applicable, or sent directly into collapse simulation.
