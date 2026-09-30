@@ -243,14 +243,23 @@ sizeGrid.querySelectorAll<HTMLButtonElement>('.brick-choice').forEach(button => 
 });
 
 colorGrid.querySelectorAll<HTMLButtonElement>('.color-choice').forEach(button => {
-  button.addEventListener('click', () => studio.setSpec({ color: Number(button.dataset.color) }));
+  button.addEventListener('click', () => {
+    const color = Number(button.dataset.color);
+    if ((studio.currentMode === 'select' || studio.currentMode === 'move') && studio.selectionCount > 0) {
+      showToast(studio.paintSelection(color) ? 'SELECTION PAINTED' : 'PAINT FAILED');
+    } else {
+      studio.setSpec({ color });
+    }
+  });
 });
 
 ui.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => {
   button.addEventListener('click', () => studio.setMode(button.dataset.mode as Mode));
 });
 
-ui.querySelector('[data-action="rotate"]')?.addEventListener('click', () => studio.rotateSelection());
+ui.querySelector('[data-action="rotate"]')?.addEventListener('click', () => {
+  showToast(studio.rotateSelection() ? 'ROTATED' : 'ROTATION BLOCKED');
+});
 ui.querySelector('[data-action="undo"]')?.addEventListener('click', () => studio.undo());
 ui.querySelector('[data-action="redo"]')?.addEventListener('click', () => studio.redo());
 ui.querySelector('[data-action="view"]')?.addEventListener('click', () => studio.resetView());
