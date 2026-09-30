@@ -290,7 +290,8 @@ export class BrickStudio {
       this.stopDrive(true);
       return true;
     }
-    if (this.wheelCount < 2 || !this.records.length) return false;
+    if (!this.records.length || (this.wheelCount < 2 && this.propellerCount < 1)) return false;
+
     this.selectedIds.clear();
     this.refreshSelectionVisual();
     this.ghost.visible = false;
@@ -298,8 +299,62 @@ export class BrickStudio {
     this.driveThrottle = 0;
     this.driveSteer = 0;
     this.driveWheelSpin = 0;
+    this.driveProgramElapsed = 0;
     this.brickLayer.position.set(0, 0, 0);
     this.brickLayer.rotation.set(0, 0, 0);
+    this.brickLayer.quaternion.identity();
+
+    const bounds = new THREE.Box3().setFromObject(this.brickLayer);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+
+    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+    world.allowSleep = false;
+    world.defaultContactMaterial.friction = .72;
+    world.defaultContactMaterial.restitution = .03;
+
+    const ground = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
+    ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    ground.position.y = -.025;
+    world.addBody(ground);
+
+    const mass = Math.max(1.1, this.records.length * .18 + this.motorCount * .28);
+    const body = new CANNON.Body({
+      mass,
+      linearDamping: .22,
+      angularDamping: .78,
+      allowSleep: false
+    });
+    body.angularFactor.set(0, 1, 0);
+    body.addShape(
+      new CANNON.Box(new CANNON.Vec3(
+        Math.max(.25, size.x / 2),
+        Math.max(.18, size.y / 2),
+        Math.max(.25, size.z / 2)
+      )),
+      new CANNON.Vec3(center.x, center.y, center.z)
+    );
+    body.position.set(0, .055, 0);
+    world.addBody(body);
+
+    const wallHeight = 2.4;
+    const wallThickness = .35;
+    const wallLength = 30;
+    const addWall = (x: number, z: number, sx: number, sz: number): void => {
+      const wall = new CANNON.Body({
+        mass: 0,
+        shape: new CANNON.Box(new CANNON.Vec3(sx / 2, wallHeight / 2, sz / 2))
+      });
+      wall.position.set(x, wallHeight / 2, z);
+      world.addBody(wall);
+    };
+    addWall(14.5, 0, wallThickness, wallLength);
+    addWall(-14.5, 0, wallThickness, wallLength);
+    addWall(0, 14.5, wallLength, wallThickness);
+    addWall(0, -14.5, wallLength, wallThickness);
+
+    this.driveWorld = world;
+    this.driveBody = body;
     this.notify();
     return true;
   }
@@ -315,15 +370,21 @@ export class BrickStudio {
     this.driveActiveState = false;
     this.driveThrottle = 0;
     this.driveSteer = 0;
+    this.driveWorld = undefined;
+    this.driveBody = undefined;
+    this.driveProgramElapsed = 0;
+
     if (reset) {
       this.brickLayer.position.set(0, 0, 0);
       this.brickLayer.rotation.set(0, 0, 0);
+      this.brickLayer.quaternion.identity();
       this.driveWheelSpin = 0;
       this.orbitTarget.x = 0;
       this.orbitTarget.z = 0;
       this.rebuildAll();
       this.updateCamera();
     }
+
     this.ghost.visible = this.mode === 'build';
     this.notify();
   }
@@ -1302,33 +1363,83 @@ export class BrickStudio {
   }
 
   private updateDrive(delta: number): void {
-    if (!this.driveActiveState) return;
+    const world = this.driveWorld;
+    const body = this.driveBody;
+    if (!this.driveActiveState || !world || !body) return;
 
-    const steeringRate = 1.25 * (0.25 + Math.abs(this.driveThrottle) * .75);
-    this.brickLayer.rotation.y += this.driveSteer * steeringRate * delta;
-    const speed = this.driveThrottle * 3.15;
-    const yaw = this.brickLayer.rotation.y;
-    this.brickLayer.position.x += Math.sin(yaw) * speed * delta;
-    this.brickLayer.position.z -= Math.cos(yaw) * speed * delta;
+    this.driveProgramElapsed += delta;
 
-    const radius = Math.hypot(this.brickLayer.position.x, this.brickLayer.position.z);
-    if (radius > 13) {
-      const scale = 13 / radius;
-      this.brickLayer.position.x *= scale;
-      this.brickLayer.position.z *= scale;
+    let throttle = this.driveThrottle;
+    let steer = this.driveSteer;
+    if (this.programCount > 0) {
+      switch (this.programMode) {
+        case 'cruise':
+          throttle = .72;
+          steer = Math.sin(this.driveProgramElapsed * .55) * .12;
+          break;
+        case 'patrol':
+          throttle = .62;
+          steer = Math.sin(this.driveProgramElapsed * 1.05) * .72;
+          break;
+        case 'spin':
+          throttle = .24;
+          steer = 1;
+          break;
+      }
     }
 
-    this.driveWheelSpin += this.driveThrottle * delta * 8.5;
+    const localForward = new CANNON.Vec3(0, 0, -1);
+    const forward = new CANNON.Vec3();
+    body.quaternion.vmult(localForward, forward);
+
+    const motorBoost = 1 + this.motorCount * .42;
+    const propellerBoost = this.propellerCount * .34;
+    const gearRatio = 1 + Math.min(4, this.gearCount) * .16;
+    const driveForce = throttle * 13.5 * (motorBoost + propellerBoost) * gearRatio;
+
+    body.applyForce(
+      new CANNON.Vec3(forward.x * driveForce, 0, forward.z * driveForce),
+      body.position
+    );
+
+    const steerAuthority = (.72 + Math.abs(throttle) * 1.15) * (this.wheelCount >= 2 ? 1 : .48);
+    body.angularVelocity.y += steer * steerAuthority * delta * 4.2;
+    body.angularVelocity.y = THREE.MathUtils.clamp(body.angularVelocity.y, -1.8, 1.8);
+
+    const horizontalSpeed = Math.hypot(body.velocity.x, body.velocity.z);
+    const topSpeed = 3.3 + this.motorCount * .45 + this.gearCount * .42 + this.propellerCount * .58;
+    if (horizontalSpeed > topSpeed) {
+      const scale = topSpeed / horizontalSpeed;
+      body.velocity.x *= scale;
+      body.velocity.z *= scale;
+    }
+
+    world.step(1 / 60, Math.min(delta, .05), 4);
+
+    this.brickLayer.position.set(body.position.x, body.position.y, body.position.z);
+    this.brickLayer.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+
+    const visualPower = throttle * (1 + this.motorCount * .28 + this.propellerCount * .38);
+    this.driveWheelSpin += visualPower * delta * 10.5;
     this.records.forEach((record, index) => {
-      if (record.kind !== 'wheel') return;
       const group = this.brickLayer.children[index];
-      group?.traverse(object => {
-        if (object.userData.partRole === 'wheel') object.rotation.z = this.driveWheelSpin;
+      if (!group) return;
+      group.traverse(object => {
+        const role = object.userData.partRole;
+        if (record.kind === 'wheel' && role === 'wheel') object.rotation.z = this.driveWheelSpin;
+        else if (record.kind === 'motor' && role === 'motor-rotor') object.rotation.z = this.driveWheelSpin * 1.8;
+        else if (record.kind === 'gear' && role === 'gear') object.rotation.y = this.driveWheelSpin * 1.35;
+        else if (record.kind === 'propeller' && role === 'propeller-rotor') object.rotation.z = this.driveWheelSpin * 2.8;
+        else if (record.kind === 'program' && role === 'program-led') {
+          const pulse = .85 + Math.sin(this.driveProgramElapsed * 9) * .15;
+          object.scale.setScalar(pulse);
+        }
       });
     });
 
-    this.orbitTarget.x = this.brickLayer.position.x;
-    this.orbitTarget.z = this.brickLayer.position.z;
+    this.orbitTarget.x = body.position.x;
+    this.orbitTarget.y = Math.max(.9, body.position.y + .9);
+    this.orbitTarget.z = body.position.z;
     this.updateCamera();
   }
 
