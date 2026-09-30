@@ -770,7 +770,7 @@ export class BrickStudio {
       for (const z of [-4.8, -3.2, -1.6, 0, 1.6, 3.2, 4.8]) {
         for (const x of [-2.4, -.8, .8, 2.4]) add('brick', 2, 4, x, BODY_H * .7, z, C.black);
       }
-      for (const z of [-4.8, -1.6, 1.6, 4.8]) {
+      for (const z of [-5.6, -4.0, -2.4, -.8, .8, 2.4, 4.0, 5.6]) {
         add('wheel', 2, 2, 0, 0, z, C.black);
       }
       for (const x of [-1.6, 1.6]) {
