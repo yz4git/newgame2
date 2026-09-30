@@ -13,6 +13,7 @@ export interface BrickSpec {
   d: number;
   color: number;
   rotation: 0 | 1;
+  hingeAngle?: number;
 }
 
 const bodyGeometry = new THREE.BoxGeometry(1, BODY_H, 1);
@@ -145,8 +146,10 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
     group.add(barrel);
 
     const flap = new THREE.Mesh(new THREE.BoxGeometry(f.w * STUD * .9, BODY_H * .22, f.d * STUD * .62), mat);
-    flap.rotation.x = -Math.PI * .19;
+    const hingeAngle = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(spec.hingeAngle ?? 35, 0, 110));
+    flap.rotation.x = -hingeAngle;
     flap.position.set(0, BODY_H * .83, f.d * STUD * .12);
+    flap.userData.partRole = 'hinge-flap';
     flap.castShadow = true;
     tag(group, flap);
     group.add(flap);
@@ -166,6 +169,7 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
       wheel.rotation.y = Math.PI / 2;
       wheel.position.set(side * f.w * STUD * .56, BODY_H * .55, 0);
       wheel.castShadow = true;
+      wheel.userData.partRole = 'wheel';
       tag(group, wheel);
       group.add(wheel);
     }
@@ -217,5 +221,12 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
 }
 
 export function cloneSpec(spec: BrickSpec): BrickSpec {
-  return { kind: spec.kind, w: spec.w, d: spec.d, color: spec.color, rotation: spec.rotation };
+  return {
+    kind: spec.kind,
+    w: spec.w,
+    d: spec.d,
+    color: spec.color,
+    rotation: spec.rotation,
+    hingeAngle: spec.hingeAngle
+  };
 }
