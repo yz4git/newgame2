@@ -5,6 +5,17 @@ import { GameScene } from './game/scenes/GameScene';
 import { Hud } from './ui/Hud';
 import { installFreshPagePolicy } from './pwa/FreshPage';
 
+function syncViewportHeight(): void {
+  const height = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  document.documentElement.style.setProperty('--app-height', height + 'px');
+}
+
+syncViewportHeight();
+window.addEventListener('resize', syncViewportHeight, { passive: true });
+window.addEventListener('orientationchange', () => window.setTimeout(syncViewportHeight, 120), { passive: true });
+window.visualViewport?.addEventListener('resize', syncViewportHeight, { passive: true });
+window.visualViewport?.addEventListener('scroll', syncViewportHeight, { passive: true });
+
 const uiRoot = document.querySelector('#ui-root');
 if (!(uiRoot instanceof HTMLElement)) throw new Error('Missing UI root');
 
