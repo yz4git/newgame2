@@ -218,6 +218,12 @@ export class BrickStudio {
   get suspensionWheelCount(): number {
     return this.driveVehicle?.wheelInfos.length ?? this.wheelCount * 2;
   }
+  get suspensionDebug(): string {
+    if (!this.driveVehicle) return '';
+    return this.driveVehicle.wheelInfos.map((wheel, index) =>
+      `${index}:${wheel.isInContact ? 1 : 0}:${wheel.suspensionLength.toFixed(3)}`
+    ).join('|');
+  }
   get meshedGearPairs(): number {
     let pairs = 0;
     const gears = this.records
