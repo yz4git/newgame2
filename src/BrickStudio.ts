@@ -461,6 +461,8 @@ export class BrickStudio {
     const ground = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
     ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     ground.position.y = -.025;
+    ground.aabbNeedsUpdate = true;
+    ground.updateAABB();
     world.addBody(ground);
 
     const mass = Math.max(1.1, this.records.length * .18 + this.motorCount * .30);
@@ -552,6 +554,8 @@ export class BrickStudio {
         shape: new CANNON.Box(new CANNON.Vec3(sx / 2, wallHeight / 2, sz / 2))
       });
       wall.position.set(x, wallHeight / 2, z);
+      wall.aabbNeedsUpdate = true;
+      wall.updateAABB();
       world.addBody(wall);
     };
     addWall(14.5, 0, wallThickness, wallLength);
@@ -1926,6 +1930,8 @@ export class BrickStudio {
     const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     groundBody.position.y = -.02;
+    groundBody.aabbNeedsUpdate = true;
+    groundBody.updateAABB();
     world.addBody(groundBody);
 
     // Large dioramas can contain hundreds of render pieces. Simulating every
@@ -2094,6 +2100,8 @@ export class BrickStudio {
       });
       body.position.set(bump.x, bump.sy / 2, bump.z);
       body.quaternion.setFromEuler(0, 0, bump.r);
+      body.aabbNeedsUpdate = true;
+      body.updateAABB();
       world.addBody(body);
 
       const mesh = new THREE.Mesh(
