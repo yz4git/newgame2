@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import {
   BODY_H, STUD, cloneSpec, createPart, footprint, partHeight,
-  type BrickSpec, type PartKind, type ProgramMode
+  type BrickSpec, type PartKind, type ProgramMode, type ProgramCommand
 } from './brickFactory';
 
 export interface BrickRecord extends BrickSpec {
@@ -56,6 +56,21 @@ interface PhysicsGrab {
   throwVelocity: THREE.Vector3;
 }
 
+interface DriveWheelVisual {
+  wheelIndex: number;
+  recordIndex: number;
+  mesh: THREE.Object3D;
+  baseY: number;
+  steering: boolean;
+}
+
+interface ProgramRuntime {
+  index: number;
+  elapsed: number;
+  motorEnabled: boolean;
+  hingeTarget: number | null;
+}
+
 const slotKey = (slot: number): string => `brick-lab-slot-${slot}-v2`;
 
 export class BrickStudio {
@@ -71,6 +86,7 @@ export class BrickStudio {
     new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
   );
   private brickLayer = new THREE.Group();
+  private driveTerrain = new THREE.Group();
   private ghost: THREE.Group;
   private ghostValid = true;
   private selected: BrickSpec = { kind: 'brick', w: 2, d: 4, color: 0xe53935, rotation: 0 };
@@ -108,7 +124,16 @@ export class BrickStudio {
   private driveWheelSpin = 0;
   private driveWorld?: CANNON.World;
   private driveBody?: CANNON.Body;
+  private driveVehicle?: CANNON.RaycastVehicle;
+  private driveWheelVisuals: DriveWheelVisual[] = [];
   private driveProgramElapsed = 0;
+  private driveProgramRuntime: ProgramRuntime = {
+    index: 0,
+    elapsed: 0,
+    motorEnabled: true,
+    hingeTarget: null
+  };
+  private gearDirections = new Map<number, number>();
 
   private lastFrame = performance.now();
 
@@ -128,6 +153,8 @@ export class BrickStudio {
 
     this.scene.fog = new THREE.Fog(0xe8edf5, 23, 54);
     this.scene.add(this.brickLayer);
+    this.driveTerrain.visible = false;
+    this.scene.add(this.driveTerrain);
 
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.002;
@@ -162,6 +189,27 @@ export class BrickStudio {
   get programCount(): number { return this.records.filter(record => record.kind === 'program').length; }
   get programMode(): ProgramMode {
     return this.records.find(record => record.kind === 'program')?.programMode ?? 'manual';
+  }
+  get programSteps(): ProgramCommand[] {
+    const record = this.records.find(item => item.kind === 'program');
+    if (record?.programSteps?.length) return [...record.programSteps];
+    if (this.selected.kind === 'program' && this.selected.programSteps?.length) return [...this.selected.programSteps];
+    return [];
+  }
+  get meshedGearPairs(): number {
+    let pairs = 0;
+    const gears = this.records
+      .map((record, index) => ({ record, index }))
+      .filter(item => item.record.kind === 'gear');
+    for (let i = 0; i < gears.length; i++) {
+      for (let j = i + 1; j < gears.length; j++) {
+        const a = gears[i].record;
+        const b = gears[j].record;
+        const distance = Math.hypot(a.x - b.x, a.z - b.z);
+        if (Math.abs(a.y - b.y) <= BODY_H * .8 && distance >= STUD * .65 && distance <= STUD * 1.65) pairs++;
+      }
+    }
+    return pairs;
   }
   get instructionChoices(): { id: string; label: string; steps: number }[] {
     return Object.values(this.instructionModels).map(model => ({
