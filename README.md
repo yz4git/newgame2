@@ -81,3 +81,15 @@ The Sample Gallery includes multiple large builds that combine the simulator sys
 - **Starter House** — smaller architecture sample using windows, roof pieces, slopes and hinges.
 
 Samples can be edited, copied, saved to slots, driven when applicable, or sent directly into collapse simulation.
+
+
+## Diorama-scale samples
+
+The Sample Gallery now also includes four much larger scene-scale builds:
+
+- **Skyport City** — elevated airport terminal, control tower, service lanes, powered gates, gear train, propellers and programmable vehicle systems.
+- **Industrial Harbor** — docks, warehouse block, cargo yard, twin crane towers, powered machinery and a service vehicle.
+- **Alpine Rescue Base** — mountain terrain, rescue station, bridge, hangar area, suspension vehicle, powered parts and automation.
+- **Megaforge District** — industrial factory district with large gear walls, powered gates, factory blocks, test lane and programmable mechanisms.
+
+These dioramas are intended as system stress tests and showcase builds. They remain editable and can be copied, saved, collapsed, or used to test powered parts and programs.
