@@ -318,6 +318,66 @@ export class BrickStudio {
     return true;
   }
 
+  addProgramCommand(command: ProgramCommand): boolean {
+    if (this.physicsActive || this.driveActive) return false;
+    const ids = this.records
+      .map((record, index) => record.kind === 'program' ? index : -1)
+      .filter(index => index >= 0);
+    if (!ids.length && this.selected.kind !== 'program') return false;
+
+    this.pushHistory();
+    if (ids.length) {
+      for (const id of ids) {
+        const steps = this.records[id].programSteps ?? [];
+        this.records[id].programSteps = [...steps, command].slice(-16);
+      }
+    } else {
+      this.selected.programSteps = [...(this.selected.programSteps ?? []), command].slice(-16);
+    }
+    this.rebuildAll();
+    this.rebuildGhost();
+    this.notify();
+    return true;
+  }
+
+  removeLastProgramCommand(): boolean {
+    if (this.physicsActive || this.driveActive) return false;
+    const ids = this.records
+      .map((record, index) => record.kind === 'program' ? index : -1)
+      .filter(index => index >= 0);
+    const current = ids.length ? this.records[ids[0]].programSteps ?? [] : this.selected.programSteps ?? [];
+    if (!current.length) return false;
+
+    this.pushHistory();
+    if (ids.length) {
+      for (const id of ids) this.records[id].programSteps = (this.records[id].programSteps ?? []).slice(0, -1);
+    } else if (this.selected.kind === 'program') {
+      this.selected.programSteps = current.slice(0, -1);
+    }
+    this.rebuildAll();
+    this.rebuildGhost();
+    this.notify();
+    return true;
+  }
+
+  clearProgramCommands(): boolean {
+    if (this.physicsActive || this.driveActive) return false;
+    const ids = this.records
+      .map((record, index) => record.kind === 'program' ? index : -1)
+      .filter(index => index >= 0);
+    const has = ids.some(id => (this.records[id].programSteps?.length ?? 0) > 0) ||
+      (this.selected.kind === 'program' && (this.selected.programSteps?.length ?? 0) > 0);
+    if (!has) return false;
+
+    this.pushHistory();
+    for (const id of ids) this.records[id].programSteps = [];
+    if (this.selected.kind === 'program') this.selected.programSteps = [];
+    this.rebuildAll();
+    this.rebuildGhost();
+    this.notify();
+    return true;
+  }
+
   adjustSelectedHinges(deltaDegrees: number): boolean {
     if (this.physicsActive || this.driveActive || !this.selectedIds.size) return false;
     const hingeIds = [...this.selectedIds].filter(id => this.records[id]?.kind === 'hinge');
@@ -1247,6 +1307,11 @@ export class BrickStudio {
       hingeAngle: Number.isFinite(Number(r.hingeAngle)) ? Number(r.hingeAngle) : undefined,
       programMode: ['manual', 'cruise', 'patrol', 'spin'].includes(String(r.programMode))
         ? r.programMode as ProgramMode
+        : undefined,
+      programSteps: Array.isArray(r.programSteps)
+        ? r.programSteps.filter((command): command is ProgramCommand =>
+            ['motorOn','motorOff','forward','reverse','left','right','wait','hingeOpen','hingeClose'].includes(String(command))
+          ).slice(0, 16)
         : undefined
     }));
     this.selectedIds.clear();
