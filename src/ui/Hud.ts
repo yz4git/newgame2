@@ -1,6 +1,8 @@
 import { gameBus, emit, type HudPayload, type ResultPayload } from '../game/events';
 import type { Action } from '../game/input/InputSystem';
 
+const PhaserMathClamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
 export class Hud {
   private root: HTMLElement;
   private title!: HTMLElement;
@@ -78,9 +80,9 @@ export class Hud {
       </section>
 
       <section class="touch-controls">
-        <div class="touch-move">
-          <button data-hold="left" aria-label="Move left">◀</button>
-          <button data-hold="right" aria-label="Move right">▶</button>
+        <div class="virtual-stick" aria-label="Move">
+          <div class="virtual-stick-ring"></div>
+          <div class="virtual-stick-knob"></div>
         </div>
         <div class="touch-actions">
           <button data-tap="parry" class="mini parry">PARRY</button>
@@ -113,16 +115,42 @@ export class Hud {
       button.addEventListener('click', () => emit('command', button.dataset.command || ''));
     });
 
-    this.root.querySelectorAll<HTMLButtonElement>('[data-hold]').forEach(button => {
-      const action = button.dataset.hold as Action;
-      const set = (down: boolean) => emit('virtual', { action, down });
-      button.addEventListener('pointerdown', event => {
+    const stick = this.root.querySelector('.virtual-stick') as HTMLElement | null;
+    const knob = this.root.querySelector('.virtual-stick-knob') as HTMLElement | null;
+    if (stick && knob) {
+      let activePointer: number | null = null;
+      const updateStick = (event: PointerEvent) => {
+        const rect = stick.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = event.clientX - cx;
+        const dy = event.clientY - cy;
+        const max = rect.width * .34;
+        const length = Math.hypot(dx, dy) || 1;
+        const scale = Math.min(1, max / length);
+        const x = dx * scale;
+        const y = dy * scale;
+        knob.style.transform = `translate(${x}px,${y}px)`;
+        emit('virtual-axis', { x: PhaserMathClamp(dx / max, -1, 1) });
+      };
+      const releaseStick = () => {
+        activePointer = null;
+        knob.style.transform = 'translate(0px,0px)';
+        emit('virtual-axis', { x: 0 });
+      };
+      stick.addEventListener('pointerdown', event => {
         event.preventDefault();
-        button.setPointerCapture(event.pointerId);
-        set(true);
+        activePointer = event.pointerId;
+        stick.setPointerCapture(event.pointerId);
+        updateStick(event);
       });
-      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(name => button.addEventListener(name, () => set(false)));
-    });
+      stick.addEventListener('pointermove', event => {
+        if (activePointer !== event.pointerId) return;
+        event.preventDefault();
+        updateStick(event);
+      });
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(name => stick.addEventListener(name, releaseStick));
+    }
 
     this.root.querySelectorAll<HTMLButtonElement>('[data-tap]').forEach(button => {
       const action = button.dataset.tap as Action;
