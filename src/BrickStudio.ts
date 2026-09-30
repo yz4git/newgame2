@@ -159,22 +159,41 @@ export class BrickStudio {
     this.setSpec({ kind, ...defaults[kind] });
   }
 
-  rotateSelection(): void {
-    if (this.physicsActive) return;
+  rotateSelection(): boolean {
+    if (this.physicsActive) return false;
     if (this.selectedIds.size && (this.mode === 'select' || this.mode === 'move')) {
-      this.pushHistory();
+      const candidate = this.records.map(record => ({ ...record }));
       for (const id of this.selectedIds) {
-        const record = this.records[id];
+        const record = candidate[id];
         if (record) record.rotation = record.rotation ? 0 : 1;
       }
+      const moving = [...this.selectedIds].map(id => candidate[id]).filter(Boolean);
+      const fixed = candidate.filter((_, index) => !this.selectedIds.has(index));
+      if (!this.recordsCanCoexist(moving, fixed)) return false;
+
+      this.pushHistory();
+      this.records = candidate;
       this.rebuildAll();
       this.notify();
-      return;
+      return true;
     }
 
     this.selected.rotation = this.selected.rotation ? 0 : 1;
     this.rebuildGhost();
     this.notify();
+    return true;
+  }
+
+  paintSelection(color: number): boolean {
+    if (this.physicsActive || !this.selectedIds.size) return false;
+    this.pushHistory();
+    for (const id of this.selectedIds) {
+      const record = this.records[id];
+      if (record) record.color = color;
+    }
+    this.rebuildAll();
+    this.notify();
+    return true;
   }
 
   setMode(mode: Mode): void {
@@ -364,6 +383,11 @@ export class BrickStudio {
     this.rebuildAll();
     this.mode = 'instruction';
     this.instructionStep = 0;
+    this.orbitTarget.set(0, 1.0, 0);
+    this.azimuth = Math.PI * .28;
+    this.polar = .92;
+    this.distance = 9.5;
+    this.updateCamera();
     this.updateInstructionGhost();
     this.notify();
   }
@@ -392,11 +416,15 @@ export class BrickStudio {
 
   keepInstructionModel(): void {
     if (this.mode !== 'instruction') return;
+    const previous = this.instructionBackup?.map(record => ({ ...record })) ?? [];
     this.removeInstructionGhost();
     this.instructionBackup = undefined;
     this.mode = 'select';
     this.selectedIds.clear();
-    this.pushHistorySnapshot([]);
+    this.pushHistorySnapshot(previous);
+    this.orbitTarget.set(0, 1.05, 0);
+    this.distance = 10.5;
+    this.updateCamera();
     this.notify();
   }
 
@@ -898,7 +926,7 @@ export class BrickStudio {
     this.removeInstructionGhost();
     const step = this.instructionSteps[this.instructionStep];
     if (!step || this.mode !== 'instruction') return;
-    this.instructionGhost = createPart(step.record, .32);
+    this.instructionGhost = createPart(step.record, .36);
     this.instructionGhost.position.set(step.record.x, step.record.y, step.record.z);
     this.instructionGhost.traverse(obj => {
       const mesh = obj as THREE.Mesh;
@@ -913,6 +941,7 @@ export class BrickStudio {
       }
     });
     this.scene.add(this.instructionGhost);
+    this.instructionGhost.userData.pulseStartedAt = performance.now();
   }
 
   private removeInstructionGhost(): void {
@@ -955,8 +984,17 @@ export class BrickStudio {
         allowSleep: true
       });
       const outward = Math.hypot(record.x, record.z) || 1;
-      body.velocity.set(record.x / outward * .22 + (Math.random() - .5) * .28, .15, record.z / outward * .22 + (Math.random() - .5) * .28);
-      body.angularVelocity.set((Math.random() - .5) * .5, (Math.random() - .5) * .3, (Math.random() - .5) * .5);
+      const heightBias = 0.2 + Math.min(1.4, record.y * .18);
+      body.velocity.set(
+        record.x / outward * (.42 + heightBias) + (Math.random() - .5) * .55,
+        .35 + Math.random() * .45,
+        record.z / outward * (.42 + heightBias) + (Math.random() - .5) * .55
+      );
+      body.angularVelocity.set(
+        (Math.random() - .5) * 1.15,
+        (Math.random() - .5) * .7,
+        (Math.random() - .5) * 1.15
+      );
       world.addBody(body);
 
       const mesh = this.brickLayer.children[index] as THREE.Group;
@@ -1015,6 +1053,12 @@ export class BrickStudio {
     this.lastFrame = now;
 
     this.updatePhysics(delta);
+    if (this.instructionGhost) {
+      const t = now * .006;
+      const pulse = 1 + Math.sin(t) * .045;
+      this.instructionGhost.scale.setScalar(pulse);
+      this.instructionGhost.rotation.y = Math.sin(t * .35) * .035;
+    }
     if (this.pointers.size === 0 && !this.physicsActive) this.updateGhost();
     this.renderer.render(this.scene, this.camera);
   };
