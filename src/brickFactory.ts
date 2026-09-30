@@ -266,22 +266,26 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
   } else if (spec.kind === 'gear') {
     addBody(group, spec, mat, BODY_H * .34);
     const gearMat = material(0xd8a925, opacity);
+    const rotor = new THREE.Group();
+    rotor.position.y = BODY_H * .70;
+    rotor.userData.partRole = 'gear-rotor';
+    tag(group, rotor);
+
     const gear = new THREE.Mesh(new THREE.TorusGeometry(.38, .12, 10, 24), gearMat);
     gear.rotation.x = Math.PI / 2;
-    gear.position.y = BODY_H * .70;
     gear.castShadow = true;
-    gear.userData.partRole = 'gear';
     tag(group, gear);
-    group.add(gear);
+    rotor.add(gear);
+
     for (let i = 0; i < 10; i++) {
       const tooth = new THREE.Mesh(new THREE.BoxGeometry(.13, .12, .20), gearMat);
       const a = i / 10 * Math.PI * 2;
-      tooth.position.set(Math.cos(a) * .48, BODY_H * .70, Math.sin(a) * .48);
+      tooth.position.set(Math.cos(a) * .48, 0, Math.sin(a) * .48);
       tooth.rotation.y = -a;
-      tooth.userData.partRole = 'gear';
       tag(group, tooth);
-      group.add(tooth);
+      rotor.add(tooth);
     }
+    group.add(rotor);
   } else if (spec.kind === 'propeller') {
     addBody(group, spec, mat, BODY_H * .32);
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(.18, .18, .28, 18), material(0x555b63, opacity));
