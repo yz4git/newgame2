@@ -15,6 +15,7 @@ export class InputSystem {
   private now = blank();
   private prev = blank();
   private latchedPress = blank();
+  private virtualAxisX = 0;
 
   constructor(private scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
@@ -38,14 +39,24 @@ export class InputSystem {
     this.virtual[action] = down;
   }
 
+  setVirtualAxis(x: number): void {
+    this.virtualAxisX = Phaser.Math.Clamp(x, -1, 1);
+  }
+
+  horizontal(): number {
+    if (Math.abs(this.virtualAxisX) > 0.08) return this.virtualAxisX;
+    if (this.now.left === this.now.right) return 0;
+    return this.now.left ? -1 : 1;
+  }
+
   update(): void {
     this.prev = { ...this.now };
     const pads = this.scene.input.gamepad;
     const pad = pads?.total ? pads.getPad(0) : undefined;
     const axisX = pad?.axes?.length ? pad.axes[0].getValue() : 0;
 
-    this.now.left = this.virtual.left || this.keys.left.isDown || this.keys.left2.isDown || axisX < -0.24 || !!pad?.left;
-    this.now.right = this.virtual.right || this.keys.right.isDown || this.keys.right2.isDown || axisX > 0.24 || !!pad?.right;
+    this.now.left = this.virtual.left || this.keys.left.isDown || this.keys.left2.isDown || this.virtualAxisX < -0.12 || axisX < -0.24 || !!pad?.left;
+    this.now.right = this.virtual.right || this.keys.right.isDown || this.keys.right2.isDown || this.virtualAxisX > 0.12 || axisX > 0.24 || !!pad?.right;
     this.now.jump = this.virtual.jump || this.keys.jump.isDown || this.keys.jump2.isDown || !!pad?.A;
     this.now.attack = this.virtual.attack || this.keys.attack.isDown || !!pad?.X;
     this.now.dash = this.virtual.dash || this.keys.dash.isDown || !!pad?.B;
