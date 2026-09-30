@@ -926,10 +926,11 @@ export class BrickStudio {
     const make = (
       label: string, kind: PartKind, w: number, d: number,
       x: number, y: number, z: number, color: number,
-      rotation: 0 | 1 = 0, hingeAngle?: number
+      rotation: 0 | 1 = 0, hingeAngle?: number,
+      extras: Partial<BrickSpec> = {}
     ): InstructionStep => ({
       label,
-      record: { kind, w, d, x, y, z, color, rotation, hingeAngle }
+      record: { kind, w, d, x, y, z, color, rotation, hingeAngle, ...extras }
     });
 
     this.instructionModels = {
@@ -982,7 +983,16 @@ export class BrickStudio {
           make('Long chassis', 'brick', 2, 4, 0, BODY_H * .7, 0, blue),
           make('Drive motor', 'motor', 2, 2, 0, BODY_H * 1.7, .8, red),
           make('Torque gear', 'gear', 2, 2, 0, BODY_H * 2.9, .8, yellow),
-          make('Program controller', 'program', 2, 2, 0, BODY_H * 1.7, -.8, white),
+          make(
+            'Program controller', 'program', 2, 2, 0, BODY_H * 1.7, -.8, white, 0, undefined,
+            {
+              programMode: 'manual',
+              programSteps: [
+                'motorOn', 'forward', 'left', 'forward',
+                'right', 'hingeOpen', 'wait', 'hingeClose'
+              ]
+            }
+          ),
           make('Front aero slope', 'slope', 2, 2, 0, BODY_H * 2.9, -1.2, orange),
           make('Rear propeller', 'propeller', 2, 2, 0, BODY_H * 4.0, 1.55, green),
           make('Driver roof', 'roof', 2, 2, 0, BODY_H * 4.1, -.3, red)
