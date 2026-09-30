@@ -62,3 +62,11 @@ button.active{border-color:var(--blue);background:#eef5ff;box-shadow:inset 0 0 0
 .samples-open #viewport:after{content:"";position:absolute;inset:0;background:rgba(44,57,75,.18);pointer-events:none}
 @media(max-width:760px){.sample-panel{width:calc(100% - 20px);max-height:calc(100% - 66px);padding:11px}.sample-grid{gap:6px}.sample-card{min-height:76px;padding:9px}.sample-card b{font-size:10px}.sample-card span{font-size:8px}.sample-card em{margin-top:7px;font-size:6px}.sample-head strong{font-size:15px}}
 @media(max-height:500px){.sample-panel{max-height:calc(100% - 24px);width:min(720px,calc(100% - 20px));padding:10px}.sample-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.sample-card,.sample-card.compact{grid-column:auto;min-height:62px;padding:8px}.sample-card em{margin-top:5px}.sample-panel>p{margin-top:7px}}
+
+.sample-section-title{margin:10px 2px 7px;color:#516173;font-size:8px;font-weight:950;letter-spacing:.14em}
+.sample-section-title:first-of-type{margin-top:2px}
+.diorama-grid .sample-card{min-height:106px;background:linear-gradient(145deg,#17243a,#253a59);border-color:rgba(103,166,255,.26);color:#fff}
+.diorama-grid .sample-card span{color:#c8d9ec}.diorama-grid .sample-card em{color:#7ec8ff}
+.diorama-grid .sample-card:active{background:linear-gradient(145deg,#1d2f4b,#2e4a70)}
+@media(max-width:760px){.diorama-grid .sample-card{min-height:86px}.sample-section-title{margin-top:8px}}
+@media(max-height:500px){.sample-section-title{grid-column:1/-1;margin:5px 2px 2px}.diorama-grid .sample-card{min-height:64px}}
