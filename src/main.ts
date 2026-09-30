@@ -320,7 +320,7 @@ ui.querySelectorAll<HTMLButtonElement>('[data-load]').forEach(button => {
 });
 
 ui.querySelectorAll<HTMLButtonElement>('[data-instruction-model]').forEach(button => {
-  button.addEventListener('click', () => studio.startInstructions(button.dataset.instructionModel));
+  button.addEventListener('click', () => studio.startInstructions(button.dataset.instructionModel ?? 'rover'));
 });
 ui.querySelector('[data-action="instruction-prev"]')?.addEventListener('click', () => studio.instructionPrev());
 ui.querySelector('[data-action="instruction-next"]')?.addEventListener('click', () => {
