@@ -25,7 +25,11 @@ const PARTS: { kind: PartKind; label: string; mark: string }[] = [
   { kind: 'hinge', label: 'HINGE', mark: '⌁' },
   { kind: 'wheel', label: 'WHEEL', mark: '◉' },
   { kind: 'window', label: 'WINDOW', mark: '▣' },
-  { kind: 'roof', label: 'ROOF', mark: '⌃' }
+  { kind: 'roof', label: 'ROOF', mark: '⌃' },
+  { kind: 'motor', label: 'MOTOR', mark: '⚙' },
+  { kind: 'gear', label: 'GEAR', mark: '✣' },
+  { kind: 'propeller', label: 'PROPELLER', mark: '✦' },
+  { kind: 'program', label: 'PROGRAM', mark: '▣' }
 ];
 
 function syncViewport(): void {
@@ -99,6 +103,15 @@ ui.innerHTML = `
       </div>
     </section>
     <section>
+      <label>PROGRAM</label>
+      <div class="program-grid">
+        <button data-program="manual">MANUAL</button>
+        <button data-program="cruise">CRUISE</button>
+        <button data-program="patrol">PATROL</button>
+        <button data-program="spin">SPIN</button>
+      </div>
+    </section>
+    <section>
       <label>SAVE SLOTS</label>
       <div class="slot-list">
         <div class="slot-row" data-slot="1"><b>S1</b><span></span><button data-save="1">SAVE</button><button data-load="1">LOAD</button></div>
@@ -139,7 +152,8 @@ ui.innerHTML = `
       <button data-drive-steer="1">RIGHT</button>
       <button data-drive-throttle="-1">REV</button>
     </div>
-    <p>Model returns to its build position when DRIVE TEST ends.</p>
+    <p class="drive-stats"></p>
+    <p>Physics uses model mass + MOTOR/GEAR/PROPELLER power. RETURN restores build position.</p>
   </aside>
 
   <footer class="bottombar">
@@ -193,6 +207,7 @@ const selectionCount = ui.querySelector('.selection-count') as HTMLElement;
 const instructionCount = ui.querySelector('.instruction-count') as HTMLElement;
 const instructionLabel = ui.querySelector('.instruction-label') as HTMLElement;
 const instructionModelTitle = ui.querySelector('.instruction-model-title') as HTMLElement;
+const driveStats = ui.querySelector('.drive-stats') as HTMLElement;
 const toast = ui.querySelector('.toast') as HTMLElement;
 let toastTimer = 0;
 
@@ -239,6 +254,12 @@ const studio = new BrickStudio(viewport, current => {
   physicsButton.textContent = current.physicsActive ? 'RESTORE' : 'COLLAPSE';
   const driveButton = ui.querySelector('[data-action="drive"]') as HTMLButtonElement;
   driveButton.textContent = current.driveActive ? 'RETURN' : 'DRIVE TEST';
+  driveStats.textContent =
+    `${current.wheelCount} WHEEL · ${current.motorCount} MOTOR · ${current.gearCount} GEAR · ${current.propellerCount} PROP · ${current.programMode.toUpperCase()}`;
+
+  ui.querySelectorAll<HTMLButtonElement>('[data-program]').forEach(button => {
+    button.classList.toggle('active', button.dataset.program === current.programMode);
+  });
 
   for (let slot = 1; slot <= 3; slot++) {
     const row = ui.querySelector(`.slot-row[data-slot="${slot}"] span`);
@@ -301,8 +322,19 @@ ui.querySelector('[data-action="hinge-close"]')?.addEventListener('click', () =>
 ui.querySelector('[data-action="hinge-open"]')?.addEventListener('click', () => {
   showToast(studio.adjustSelectedHinges(15) ? 'HINGE OPENED' : 'SELECT A HINGE');
 });
+ui.querySelectorAll<HTMLButtonElement>('[data-program]').forEach(button => {
+  button.addEventListener('click', () => {
+    const mode = button.dataset.program as 'manual' | 'cruise' | 'patrol' | 'spin';
+    showToast(studio.setProgramMode(mode) ? ('PROGRAM // ' + mode.toUpperCase()) : 'ADD A PROGRAM BLOCK');
+  });
+});
+
 ui.querySelector('[data-action="drive"]')?.addEventListener('click', () => {
-  showToast(studio.toggleDrive() ? (studio.driveActive ? 'DRIVE TEST STARTED' : 'BUILD POSITION RESTORED') : 'ADD AT LEAST 2 WHEELS');
+  showToast(
+    studio.toggleDrive()
+      ? (studio.driveActive ? 'PHYSICS DRIVE STARTED' : 'BUILD POSITION RESTORED')
+      : 'ADD 2 WHEELS OR A PROPELLER'
+  );
 });
 ui.querySelector('[data-action="physics"]')?.addEventListener('click', () => studio.toggleCollapse());
 
