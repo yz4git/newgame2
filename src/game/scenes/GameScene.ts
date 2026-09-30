@@ -85,6 +85,9 @@ export class GameScene extends Phaser.Scene {
   private bgClouds!: Phaser.GameObjects.TileSprite;
   private commandHandler!: EventListener;
   private virtualHandler!: EventListener;
+  private virtualAxisHandler!: EventListener;
+  private bossArenaCore?: Phaser.GameObjects.Arc;
+  private bossArenaRing?: Phaser.GameObjects.Arc;
 
   constructor() {
     super('Game');
@@ -130,6 +133,10 @@ export class GameScene extends Phaser.Scene {
       this.inputSystem?.setVirtual(event.detail.action, event.detail.down);
     }) as EventListener;
 
+    this.virtualAxisHandler = ((event: CustomEvent<{ x: number }>) => {
+      this.inputSystem?.setVirtualAxis(event.detail.x);
+    }) as EventListener;
+
     this.commandHandler = ((event: CustomEvent<string>) => {
       const command = event.detail;
       if (command === 'start' || command === 'resume') {
@@ -145,9 +152,11 @@ export class GameScene extends Phaser.Scene {
     }) as EventListener;
 
     gameBus.addEventListener('virtual', this.virtualHandler);
+    gameBus.addEventListener('virtual-axis', this.virtualAxisHandler);
     gameBus.addEventListener('command', this.commandHandler);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       gameBus.removeEventListener('virtual', this.virtualHandler);
+      gameBus.removeEventListener('virtual-axis', this.virtualAxisHandler);
       gameBus.removeEventListener('command', this.commandHandler);
     });
 
@@ -193,6 +202,23 @@ export class GameScene extends Phaser.Scene {
 
     this.add.rectangle(3300, 380, 350, 260, 0x4ef7ff, .025).setStrokeStyle(2, 0x4ef7ff, .16).setDepth(-8);
     this.add.text(3180, 275, 'VECTOR FLOW', { fontFamily: 'ui-monospace, monospace', fontSize: '16px', color: '#4ef7ff' }).setAlpha(.24).setDepth(-7);
+
+    this.add.rectangle(2350, 260, 720, 22, 0x192946, .7).setDepth(-10);
+    this.add.rectangle(2350, 235, 420, 8, 0xff3bd4, .16).setDepth(-9);
+    this.add.circle(2350, 260, 86, 0x091325, .85).setStrokeStyle(5, 0xff3bd4, .13).setDepth(-9);
+    this.add.text(2080, 175, 'COMBAT ARRAY // LIVE', { fontFamily: 'ui-monospace, monospace', fontSize: '18px', color: '#ff3bd4' }).setAlpha(.22).setDepth(-8);
+
+    this.add.rectangle(4920, 250, 870, 18, 0x10243a, .75).setDepth(-10);
+    this.add.circle(4700, 285, 135, 0x071725, .8).setStrokeStyle(4, 0x5effc8, .16).setDepth(-9);
+    this.add.circle(5160, 285, 96, 0x071725, .8).setStrokeStyle(3, 0x5effc8, .12).setDepth(-9);
+    this.add.text(4680, 158, 'REFLEX SENSOR FIELD', { fontFamily: 'ui-monospace, monospace', fontSize: '18px', color: '#5effc8' }).setAlpha(.20).setDepth(-8);
+
+    this.bossArenaCore = this.add.circle(6830, 315, 176, 0xff3bd4, .035).setStrokeStyle(6, 0xff3bd4, .19).setDepth(-9);
+    this.bossArenaRing = this.add.circle(6830, 315, 238, 0x000000, 0).setStrokeStyle(3, 0x4ef7ff, .14).setDepth(-9);
+    this.add.rectangle(6220, 330, 76, 420, 0x11182d, .78).setStrokeStyle(3, 0xff3bd4, .17).setDepth(-8);
+    this.add.rectangle(7440, 330, 76, 420, 0x11182d, .78).setStrokeStyle(3, 0xff3bd4, .17).setDepth(-8);
+    this.add.text(6550, 118, 'CORE CHAMBER // RIFT WARDEN', { fontFamily: 'ui-monospace, monospace', fontSize: '22px', color: '#ff7be4' }).setAlpha(.23).setDepth(-7);
+
     this.add.rectangle(WIDTH / 2, HEIGHT - 58, WIDTH, 116, 0x04060d, .72).setScrollFactor(0).setDepth(-11);
   }
 
@@ -326,6 +352,7 @@ export class GameScene extends Phaser.Scene {
     this.updateEnemies(time, dt);
     this.updateProjectiles();
     this.updateGimmicks(time);
+    this.updateBossArena(time);
     this.updateZone(false);
 
     if (this.comboCount > 0 && time > this.comboDecayAt) this.comboCount = 0;
@@ -348,19 +375,20 @@ export class GameScene extends Phaser.Scene {
       this.emitTrail();
     } else {
       body.setAllowGravity(true);
-      const axis = (this.inputSystem.down('right') ? 1 : 0) - (this.inputSystem.down('left') ? 1 : 0);
-      if (axis !== 0) {
+      const axis = this.inputSystem.horizontal();
+      if (Math.abs(axis) > 0.04) {
         this.player.setFlipX(axis < 0);
-        this.player.setAccelerationX(axis * (grounded ? 1900 : 1250));
+        const analog = Math.max(.34, Math.abs(axis));
+        this.player.setAccelerationX(axis * (grounded ? 2050 : 1380));
         this.player.setDragX(0);
-        if (Math.abs(body.velocity.x) > speed) this.player.setVelocityX(axis * speed);
-        if (grounded && this.attackUntil < time) this.player.play('hero-run', true);
+        const targetSpeed = speed * analog;
+        if (Math.abs(body.velocity.x) > targetSpeed) this.player.setVelocityX(Math.sign(body.velocity.x) * targetSpeed);
+        if (grounded && this.attackUntil < time) this.player.play('anim-run', true);
       } else {
         this.player.setAccelerationX(0);
         this.player.setDragX(grounded ? 1800 : 260);
         if (grounded && this.attackUntil < time) {
-          this.player.anims.stop();
-          this.player.setTexture('hero-idle');
+          this.player.play('anim-idle', true);
         }
       }
 
@@ -385,6 +413,16 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    if (!grounded && this.attackUntil < time && time >= this.dashUntil && time >= this.parryUntil) {
+      if (body.velocity.y < -90) {
+        this.player.anims.stop();
+        this.player.setTexture('hero-jump');
+      } else if (body.velocity.y > 120) {
+        this.player.anims.stop();
+        this.player.setTexture('hero-fall');
+      }
+    }
+
     if (this.inputSystem.released('jump') && body.velocity.y < -220) {
       this.player.setVelocityY(body.velocity.y * .52);
     }
@@ -400,6 +438,8 @@ export class GameScene extends Phaser.Scene {
       this.dashReadyAt = time + 500;
       this.invulnerableUntil = time + 190;
       this.player.setVelocityY(0);
+      this.player.anims.stop();
+      this.player.setTexture('hero-dash');
       this.tech = 'MOVEMENT // AIR/GROUND DASH + I-FRAMES';
       this.impact(this.player.x, this.player.y + 25, 0x4ef7ff, 10);
       this.audio.sfx('dash');
@@ -408,6 +448,8 @@ export class GameScene extends Phaser.Scene {
     if (this.inputSystem.pressed('parry') && time >= this.parryReadyAt) {
       this.parryUntil = time + 185;
       this.parryReadyAt = time + 540;
+      this.player.anims.stop();
+      this.player.setTexture('hero-parry');
       this.tech = 'DEFENSE // 185ms ACTIVE PARRY WINDOW';
       this.flashRing(this.player.x, this.player.y + 22, 0xffd35a);
     }
@@ -418,8 +460,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.attackUntil > time) {
-      this.player.anims.stop();
-      this.player.setTexture(['hero-atk-1', 'hero-atk-2', 'hero-atk-3'][this.comboStep]);
+      this.player.play(['anim-atk1', 'anim-atk2', 'anim-atk3'][this.comboStep], true);
       this.resolveAttack(time);
     } else if (this.attackQueuedUntil > time) {
       this.attackQueuedUntil = 0;
@@ -717,15 +758,38 @@ export class GameScene extends Phaser.Scene {
     const isBoss = enemy.type === 'boss';
     const x = enemy.sprite.x;
     const y = enemy.sprite.y;
-    enemy.sprite.disableBody(true, true);
+    enemy.sprite.setVelocity(0, 0);
+    const body = enemy.sprite.body as Phaser.Physics.Arcade.Body;
+    body.enable = false;
+    enemy.sprite.setTintFill(0xffffff);
     this.run.defeated++;
     this.run.score += isBoss ? 2600 : 280;
-    this.impact(x, y, isBoss ? 0xff3bd4 : 0x4ef7ff, isBoss ? 60 : 26);
+
+    this.impact(x, y, isBoss ? 0xffd35a : 0x4ef7ff, isBoss ? 86 : 34);
+    this.flashRing(x, y, isBoss ? 0xffd35a : 0xff3bd4);
+
+    const ghostA = this.add.image(x, y, enemy.sprite.texture.key).setFlipX(enemy.sprite.flipX).setTint(0xff3bd4).setAlpha(.45).setDepth(7);
+    const ghostB = this.add.image(x, y, enemy.sprite.texture.key).setFlipX(enemy.sprite.flipX).setTint(0x4ef7ff).setAlpha(.38).setDepth(7);
+    this.tweens.add({ targets: ghostA, x: x - 38, alpha: 0, scaleX: 1.35, duration: isBoss ? 520 : 260, onComplete: () => ghostA.destroy() });
+    this.tweens.add({ targets: ghostB, x: x + 38, alpha: 0, scaleY: 1.25, duration: isBoss ? 560 : 280, onComplete: () => ghostB.destroy() });
+
+    this.tweens.add({
+      targets: enemy.sprite,
+      alpha: 0,
+      angle: isBoss ? 8 : Phaser.Math.Between(-18, 18),
+      scaleX: isBoss ? 1.28 : .55,
+      scaleY: isBoss ? 1.28 : .55,
+      duration: isBoss ? 720 : 300,
+      ease: 'Quad.easeIn',
+      onComplete: () => enemy.sprite.setVisible(false)
+    });
+
     if (isBoss) {
       clearRun();
-      this.cameras.main.flash(350, 255, 70, 220, false);
+      this.cameras.main.flash(420, 255, 110, 220, false);
+      this.cameras.main.shake(620, .025);
       this.audio.sfx('win');
-      this.time.delayedCall(850, () => this.finish(true));
+      this.time.delayedCall(980, () => this.finish(true));
     }
   }
 
@@ -765,6 +829,24 @@ export class GameScene extends Phaser.Scene {
     shard.disableBody(true, true);
     this.tech = 'ASSET PIPELINE // COLLECTIBLE FX + STATE UPDATE';
     this.audio.sfx('pickup');
+  }
+
+  private updateBossArena(time: number): void {
+    if (!this.bossArenaCore || !this.bossArenaRing) return;
+    const boss = this.enemies.find(e => e.type === 'boss' && e.sprite.active);
+    const phase = boss?.phase ?? 1;
+    const active = this.currentZone === 3;
+    this.bossArenaCore.setAlpha(active ? .055 + Math.sin(time * .004) * .018 : .025);
+    this.bossArenaCore.setScale(active ? 1 + Math.sin(time * .0022) * .035 : 1);
+    this.bossArenaRing.setAlpha(active ? .18 + phase * .05 : .08);
+    this.bossArenaRing.setRotation(time * .00016 * phase);
+    this.bossArenaRing.setScale(1 + Math.sin(time * .0017) * .025);
+
+    if (active && boss && phase >= 2 && Math.floor(time / 220) % 3 === 0) {
+      const x = 6830 + Phaser.Math.Between(-250, 250);
+      const spark = this.add.rectangle(x, 520, 2, Phaser.Math.Between(45, 110), phase === 3 ? 0xffd35a : 0xff3bd4, .16).setDepth(-6);
+      this.tweens.add({ targets: spark, y: 250, alpha: 0, duration: 420, onComplete: () => spark.destroy() });
+    }
   }
 
   private updateGimmicks(time: number): void {
@@ -831,9 +913,31 @@ export class GameScene extends Phaser.Scene {
       saveRun(this.run);
       this.tech = 'SAVE STATE // CHECKPOINT ' + (zone + 1) + ' SERIALIZED';
     }
+    if (zone === 3 && this.runActive) this.showBossIntro();
     const colors = [0x4ef7ff, 0xff3bd4, 0x5effc8, 0xff7be4];
     this.bgGrid.setTint(colors[zone]);
     this.impact(this.player.x, this.player.y, colors[zone], 16);
+  }
+
+  private showBossIntro(): void {
+    const existing = this.children.getByName('boss-intro');
+    if (existing) return;
+    this.cameras.main.zoomTo(1.035, 240, 'Sine.easeOut');
+    const plate = this.add.rectangle(WIDTH / 2, 145, 520, 68, 0x070912, .88)
+      .setScrollFactor(0).setDepth(80).setName('boss-intro');
+    plate.setStrokeStyle(2, 0xff3bd4, .65);
+    const title = this.add.text(WIDTH / 2, 132, 'RIFT WARDEN', {
+      fontFamily: 'ui-monospace, monospace', fontSize: '30px', fontStyle: 'bold', color: '#ffffff'
+    }).setOrigin(.5).setScrollFactor(0).setDepth(81);
+    const sub = this.add.text(WIDTH / 2, 163, 'ADAPTIVE CORE // PHASE SYSTEM ONLINE', {
+      fontFamily: 'ui-monospace, monospace', fontSize: '10px', color: '#ff7be4'
+    }).setOrigin(.5).setScrollFactor(0).setDepth(81);
+    this.time.delayedCall(1250, () => {
+      this.tweens.add({ targets: [plate, title, sub], alpha: 0, y: '-=14', duration: 300, onComplete: () => {
+        plate.destroy(); title.destroy(); sub.destroy();
+      }});
+      this.cameras.main.zoomTo(1, 320, 'Sine.easeInOut');
+    });
   }
 
   private emitHud(force: boolean): void {
