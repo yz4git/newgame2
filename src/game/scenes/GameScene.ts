@@ -15,6 +15,7 @@ type Enemy = {
   stunnedUntil: number;
   lastSwing: number;
   phase: number;
+  windupUntil: number;
 };
 
 type SceneStart = {
@@ -220,7 +221,7 @@ export class GameScene extends Phaser.Scene {
     if (type === 'boss') sprite.setSize(84, 108);
     const enemy: Enemy = {
       sprite, type, hp, maxHp: hp, cooldown: 0,
-      stunnedUntil: 0, lastSwing: 0, phase: 1
+      stunnedUntil: 0, lastSwing: 0, phase: 1, windupUntil: 0
     };
     sprite.setData('enemyRef', enemy);
     this.enemies.push(enemy);
@@ -411,6 +412,11 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
+      if (time < enemy.windupUntil) {
+        s.setVelocityX(0);
+        continue;
+      }
+
       if (enemy.type === 'drone') {
         body.setAllowGravity(false);
         s.setVelocityY(Math.sin((time + s.x) * .004) * 38);
@@ -431,9 +437,7 @@ export class GameScene extends Phaser.Scene {
         else s.setVelocityX(0);
         if (time >= enemy.cooldown) {
           if (this.inMeleeRange(enemy, 58, 22)) {
-            if (time <= this.parryUntil) this.perfectParry(enemy);
-            else this.hurtPlayer(24, dir * 360, enemy);
-            enemy.cooldown = time + (enemy.phase === 3 ? 820 : 1180);
+            this.queueMeleeAttack(enemy, 24, dir * 360, 58, 22, enemy.phase === 3 ? 220 : 300, enemy.phase === 3 ? 900 : 1280);
           } else if (distance < 760) {
             const count = enemy.phase;
             for (let i = 0; i < count; i++) this.fireProjectile(enemy, 340 + enemy.phase * 35, (i - (count - 1) / 2) * .15);
@@ -448,12 +452,48 @@ export class GameScene extends Phaser.Scene {
         else s.setVelocityX(0);
         const padding = enemy.type === 'guard' ? 26 : 18;
         if (this.inMeleeRange(enemy, padding, 10) && time >= enemy.cooldown) {
-          if (time <= this.parryUntil) this.perfectParry(enemy);
-          else this.hurtPlayer(enemy.type === 'guard' ? 18 : 12, dir * (enemy.type === 'guard' ? 280 : 220), enemy);
-          enemy.cooldown = time + (enemy.type === 'guard' ? 1550 : 1100);
+          this.queueMeleeAttack(
+            enemy,
+            enemy.type === 'guard' ? 18 : 12,
+            dir * (enemy.type === 'guard' ? 280 : 220),
+            padding,
+            10,
+            enemy.type === 'guard' ? 260 : 170,
+            enemy.type === 'guard' ? 1650 : 1180
+          );
         }
       }
     }
+  }
+
+  private queueMeleeAttack(
+    enemy: Enemy,
+    damage: number,
+    knockback: number,
+    paddingX: number,
+    paddingY: number,
+    windupMs: number,
+    cooldownMs: number
+  ): void {
+    const now = this.time.now;
+    if (enemy.windupUntil > now || now < enemy.cooldown || !enemy.sprite.active) return;
+
+    enemy.cooldown = now + cooldownMs;
+    enemy.windupUntil = now + windupMs;
+    enemy.sprite.setTint(0xff8a70);
+    this.flashRing(enemy.sprite.x, enemy.sprite.y, 0xff6f91);
+    this.floatText(enemy.sprite.x, enemy.sprite.y - enemy.sprite.displayHeight * .65, '!', '#ff8aa3');
+    this.tech = 'COMBAT READABILITY // TELEGRAPH → EVADE / PARRY';
+
+    this.time.delayedCall(windupMs, () => {
+      enemy.windupUntil = 0;
+      if (!enemy.sprite.active || !this.runActive) return;
+      enemy.sprite.clearTint();
+      if (this.paused || !this.inMeleeRange(enemy, paddingX, paddingY)) return;
+
+      if (this.time.now <= this.parryUntil) this.perfectParry(enemy);
+      else this.hurtPlayer(damage, knockback, enemy);
+    });
   }
 
   private inMeleeRange(enemy: Enemy, paddingX: number, paddingY: number): boolean {
