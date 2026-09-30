@@ -1869,7 +1869,7 @@ export class BrickStudio {
         const role = object.userData.partRole;
         if (record.kind === 'motor' && role === 'motor-rotor') {
           object.rotation.z = this.driveWheelSpin * 1.8;
-        } else if (record.kind === 'gear' && role === 'gear') {
+        } else if (record.kind === 'gear' && role === 'gear-rotor') {
           object.rotation.y = this.driveWheelSpin * 1.35 * (this.gearDirections.get(index) ?? 1);
         } else if (record.kind === 'propeller' && role === 'propeller-rotor') {
           object.rotation.z = this.driveWheelSpin * 2.8;
