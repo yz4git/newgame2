@@ -463,9 +463,16 @@ export class BrickStudio {
     this.updateCamera();
   }
 
-  startInstructions(): void {
-    if (this.physicsActive) return;
+  startInstructions(modelId = this.instructionModelId): void {
+    if (this.physicsActive || this.driveActive) return;
+    const model = this.instructionModels[modelId] ?? this.instructionModels.rover;
+    if (!model) return;
     if (this.mode !== 'instruction') this.instructionBackup = this.snapshot();
+    this.instructionModelId = model.id;
+    this.instructionSteps = model.steps.map(step => ({
+      label: step.label,
+      record: { ...step.record }
+    }));
     this.records = [];
     this.selectedIds.clear();
     this.rebuildAll();
@@ -616,28 +623,72 @@ export class BrickStudio {
     this.scene.add(ring);
   }
 
-  private buildInstructionSteps(): void {
+  private buildInstructionModels(): void {
     const black = 0x30343b;
     const blue = 0x1e6bd6;
     const yellow = 0xf5c62b;
     const white = 0xf4f5f7;
     const orange = 0xf57c21;
     const red = 0xe53935;
+    const green = 0x2f9e55;
 
     const make = (
       label: string, kind: PartKind, w: number, d: number,
-      x: number, y: number, z: number, color: number, rotation: 0 | 1 = 0
-    ): InstructionStep => ({ label, record: { kind, w, d, x, y, z, color, rotation } });
+      x: number, y: number, z: number, color: number,
+      rotation: 0 | 1 = 0, hingeAngle?: number
+    ): InstructionStep => ({
+      label,
+      record: { kind, w, d, x, y, z, color, rotation, hingeAngle }
+    });
 
-    this.instructionSteps = [
-      make('Rear wheel module', 'wheel', 2, 2, 0, 0, 1.2, black),
-      make('Front wheel module', 'wheel', 2, 2, 0, 0, -1.2, black),
-      make('Main chassis', 'brick', 2, 4, 0, BODY_H * .65, 0, blue),
-      make('Front slope', 'slope', 2, 2, 0, BODY_H * 1.65, -1.0, yellow),
-      make('Cabin window', 'window', 2, 1, 0, BODY_H * 1.65, .65, white),
-      make('Opening rear hinge', 'hinge', 2, 2, 0, BODY_H * 1.65, 1.55, orange),
-      make('Cabin roof', 'roof', 2, 2, 0, BODY_H * 4.15, .65, red)
-    ];
+    this.instructionModels = {
+      rover: {
+        id: 'rover',
+        label: 'MINI ROVER',
+        steps: [
+          make('Rear wheel module', 'wheel', 2, 2, 0, 0, 1.2, black),
+          make('Front wheel module', 'wheel', 2, 2, 0, 0, -1.2, black),
+          make('Main chassis', 'brick', 2, 4, 0, BODY_H * .65, 0, blue),
+          make('Front slope', 'slope', 2, 2, 0, BODY_H * 1.65, -1.0, yellow),
+          make('Cabin window', 'window', 2, 1, 0, BODY_H * 1.65, .65, white),
+          make('Opening rear hinge', 'hinge', 2, 2, 0, BODY_H * 1.65, 1.55, orange, 0, 62),
+          make('Cabin roof', 'roof', 2, 2, 0, BODY_H * 4.15, .65, red)
+        ]
+      },
+      house: {
+        id: 'house',
+        label: 'MICRO HOUSE',
+        steps: [
+          make('Foundation left', 'brick', 2, 4, -1.2, 0, 0, black),
+          make('Foundation right', 'brick', 2, 4, 1.2, 0, 0, black),
+          make('Front wall', 'brick', 2, 4, 0, BODY_H, -1.6, white),
+          make('Rear wall', 'brick', 2, 4, 0, BODY_H, 1.6, white),
+          make('Picture window', 'window', 2, 1, 0, BODY_H * 2, -1.6, blue),
+          make('Opening awning', 'hinge', 2, 2, 0, BODY_H * 2, 1.6, green, 0, 48),
+          make('Roof left', 'roof', 2, 4, -1.0, BODY_H * 3.3, 0, red),
+          make('Roof right', 'roof', 2, 4, 1.0, BODY_H * 3.3, 0, red)
+        ]
+      },
+      tower: {
+        id: 'tower',
+        label: 'SIGNAL TOWER',
+        steps: [
+          make('Base', 'brick', 2, 4, 0, 0, 0, black),
+          make('Lower column', 'brick', 2, 2, 0, BODY_H, 0, blue),
+          make('Upper column', 'brick', 2, 2, 0, BODY_H * 2, 0, blue),
+          make('Observation window', 'window', 2, 1, 0, BODY_H * 3, 0, white),
+          make('Signal slope', 'slope', 2, 2, 0, BODY_H * 5.8, 0, yellow),
+          make('Service hinge', 'hinge', 2, 2, 0, BODY_H * 4.2, .8, orange, 0, 82),
+          make('Signal roof', 'roof', 2, 2, 0, BODY_H * 7.4, 0, red)
+        ]
+      }
+    };
+
+    const initial = this.instructionModels[this.instructionModelId] ?? this.instructionModels.rover;
+    this.instructionSteps = initial.steps.map(step => ({
+      label: step.label,
+      record: { ...step.record }
+    }));
   }
 
   private bindPointer(): void {
