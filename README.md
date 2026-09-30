@@ -5,7 +5,7 @@ A browser-based 3D studded block building simulator rebuilt from scratch for `ne
 ## Build system
 
 - Basic bricks: 1×1, 1×2, 1×3, 1×4, 2×2, 2×3, 2×4
-- Special parts: slope, hinge, wheel module, window, roof
+- Special parts: slope, hinge, wheel module, window, roof, motor, gear, propeller, program controller
 - Eight colors
 - Grid-snapped placement and vertical stacking
 - 90° rotation
@@ -22,8 +22,8 @@ A browser-based 3D studded block building simulator rebuilt from scratch for `ne
 
 ## Guided building
 
-- Instruction mode with a step-by-step Mini Rover build
-- Translucent next-part preview
+- Instruction mode with Mini Rover, Micro House, Signal Tower and Power Buggy
+- Translucent pulsing next-part preview
 - Back / Add Step / Keep Model / Exit controls
 
 ## Save system
@@ -31,11 +31,16 @@ A browser-based 3D studded block building simulator rebuilt from scratch for `ne
 - Three independent local save slots
 - Piece-count status for every slot
 
-## Physics
+## Physics and motion
 
 - Cannon-based collapse simulation
 - Per-piece rigid bodies with gravity, friction and rotation
-- RESTORE returns to the editable pre-collapse build
+- Hinges form Cannon hinge constraints to nearby support pieces
+- Grab and throw pieces while collapse simulation is running
+- Physics-based DRIVE TEST uses a rigid-body model and arena walls
+- MOTOR increases thrust, GEAR changes performance, PROPELLER adds thrust
+- PROGRAM controller supports Manual, Cruise, Patrol and Spin automation
+- RESTORE/RETURN returns to the editable pre-simulation build
 
 ## Mobile
 
