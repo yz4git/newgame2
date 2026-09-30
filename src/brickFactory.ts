@@ -175,8 +175,26 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
     group.add(axle);
 
     const wheelMat = material(0x22252a, opacity);
+    const shockMat = material(0xc8d2df, opacity);
+    const armMat = material(0x596474, opacity);
     const wheelGeo = new THREE.TorusGeometry(.36, .14, 12, 24);
     for (const side of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(.46, .09, .13), armMat);
+      arm.position.set(side * f.w * STUD * .36, BODY_H * .54, 0);
+      arm.rotation.z = side * -.18;
+      arm.userData.partRole = 'suspension-arm';
+      arm.userData.wheelSide = side;
+      tag(group, arm);
+      group.add(arm);
+
+      const shock = new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .42, 12), shockMat);
+      shock.position.set(side * f.w * STUD * .35, BODY_H * .74, 0);
+      shock.rotation.z = side * .22;
+      shock.userData.partRole = 'suspension-shock';
+      shock.userData.wheelSide = side;
+      tag(group, shock);
+      group.add(shock);
+
       const wheel = new THREE.Mesh(wheelGeo, wheelMat);
       wheel.rotation.y = Math.PI / 2;
       wheel.position.set(side * f.w * STUD * .56, BODY_H * .55, 0);
