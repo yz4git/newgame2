@@ -3,6 +3,7 @@ import './style.css';
 import { BootScene } from './game/scenes/BootScene';
 import { GameScene } from './game/scenes/GameScene';
 import { Hud } from './ui/Hud';
+import { installFreshPagePolicy } from './pwa/FreshPage';
 
 const uiRoot = document.querySelector('#ui-root');
 if (!(uiRoot instanceof HTMLElement)) throw new Error('Missing UI root');
@@ -42,8 +43,5 @@ const config: Phaser.Types.Core.GameConfig = {
 
 new Phaser.Game(config);
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('./sw.js').catch(() => undefined);
-  });
-}
+
+void installFreshPagePolicy();
