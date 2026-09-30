@@ -103,12 +103,31 @@ ui.innerHTML = `
       </div>
     </section>
     <section>
-      <label>PROGRAM</label>
+      <label>PROGRAM PRESET</label>
       <div class="program-grid">
         <button data-program="manual">MANUAL</button>
         <button data-program="cruise">CRUISE</button>
         <button data-program="patrol">PATROL</button>
         <button data-program="spin">SPIN</button>
+      </div>
+    </section>
+    <section class="visual-program-section">
+      <label>VISUAL PROGRAM</label>
+      <div class="command-grid">
+        <button data-program-command="motorOn">MOTOR ON</button>
+        <button data-program-command="motorOff">MOTOR OFF</button>
+        <button data-program-command="forward">FORWARD</button>
+        <button data-program-command="reverse">REVERSE</button>
+        <button data-program-command="left">LEFT</button>
+        <button data-program-command="right">RIGHT</button>
+        <button data-program-command="hingeOpen">HINGE OPEN</button>
+        <button data-program-command="hingeClose">HINGE CLOSE</button>
+        <button data-program-command="wait">WAIT</button>
+      </div>
+      <div class="program-sequence"></div>
+      <div class="program-edit-row">
+        <button data-action="program-back">REMOVE LAST</button>
+        <button data-action="program-clear">CLEAR</button>
       </div>
     </section>
     <section>
@@ -209,6 +228,7 @@ const instructionCount = ui.querySelector('.instruction-count') as HTMLElement;
 const instructionLabel = ui.querySelector('.instruction-label') as HTMLElement;
 const instructionModelTitle = ui.querySelector('.instruction-model-title') as HTMLElement;
 const driveStats = ui.querySelector('.drive-stats') as HTMLElement;
+const programSequence = ui.querySelector('.program-sequence') as HTMLElement;
 const toast = ui.querySelector('.toast') as HTMLElement;
 let toastTimer = 0;
 
@@ -256,11 +276,28 @@ const studio = new BrickStudio(viewport, current => {
   const driveButton = ui.querySelector('[data-action="drive"]') as HTMLButtonElement;
   driveButton.textContent = current.driveActive ? 'RETURN' : 'DRIVE TEST';
   driveStats.textContent =
-    `${current.wheelCount} WHEEL · ${current.motorCount} MOTOR · ${current.gearCount} GEAR · ${current.propellerCount} PROP · ${current.programMode.toUpperCase()}`;
+    `${current.wheelCount * 2} WHEELS · ${current.motorCount} MOTOR · ${current.meshedGearPairs} MESH · ${current.propellerCount} PROP · ${current.programSteps.length ? current.programSteps.length + ' CMD' : current.programMode.toUpperCase()}`;
 
   ui.querySelectorAll<HTMLButtonElement>('[data-program]').forEach(button => {
-    button.classList.toggle('active', button.dataset.program === current.programMode);
+    button.classList.toggle('active', button.dataset.program === current.programMode && current.programSteps.length === 0);
   });
+
+  const commandLabel: Record<string, string> = {
+    motorOn: 'MOTOR+',
+    motorOff: 'MOTOR−',
+    forward: '↑',
+    reverse: '↓',
+    left: '↶',
+    right: '↷',
+    wait: 'WAIT',
+    hingeOpen: 'HINGE+',
+    hingeClose: 'HINGE−'
+  };
+  programSequence.innerHTML = current.programSteps.length
+    ? current.programSteps.map((command, index) =>
+        `<span><b>${index + 1}</b>${commandLabel[command] ?? command}</span>`
+      ).join('')
+    : '<em>NO COMMANDS — PRESET MODE ACTIVE</em>';
 
   for (let slot = 1; slot <= 3; slot++) {
     const row = ui.querySelector(`.slot-row[data-slot="${slot}"] span`);
@@ -326,8 +363,30 @@ ui.querySelector('[data-action="hinge-open"]')?.addEventListener('click', () => 
 ui.querySelectorAll<HTMLButtonElement>('[data-program]').forEach(button => {
   button.addEventListener('click', () => {
     const mode = button.dataset.program as 'manual' | 'cruise' | 'patrol' | 'spin';
-    showToast(studio.setProgramMode(mode) ? ('PROGRAM // ' + mode.toUpperCase()) : 'ADD A PROGRAM BLOCK');
+    if (studio.setProgramMode(mode)) {
+      studio.clearProgramCommands();
+      showToast('PRESET // ' + mode.toUpperCase());
+    } else {
+      showToast('ADD A PROGRAM BLOCK');
+    }
   });
+});
+
+ui.querySelectorAll<HTMLButtonElement>('[data-program-command]').forEach(button => {
+  button.addEventListener('click', () => {
+    const command = button.dataset.programCommand as
+      | 'motorOn' | 'motorOff'
+      | 'forward' | 'reverse'
+      | 'left' | 'right' | 'wait'
+      | 'hingeOpen' | 'hingeClose';
+    showToast(studio.addProgramCommand(command) ? 'COMMAND ADDED' : 'ADD A PROGRAM BLOCK');
+  });
+});
+ui.querySelector('[data-action="program-back"]')?.addEventListener('click', () => {
+  showToast(studio.removeLastProgramCommand() ? 'LAST COMMAND REMOVED' : 'PROGRAM IS EMPTY');
+});
+ui.querySelector('[data-action="program-clear"]')?.addEventListener('click', () => {
+  showToast(studio.clearProgramCommands() ? 'PROGRAM CLEARED' : 'PROGRAM IS EMPTY');
 });
 
 ui.querySelector('[data-action="drive"]')?.addEventListener('click', () => {
