@@ -455,9 +455,12 @@ export class BrickStudio {
     const body = new CANNON.Body({
       mass,
       linearDamping: .16,
-      angularDamping: .62,
+      angularDamping: .72,
       allowSleep: false
     });
+    // Keep steering/yaw free, but damp excessive pitch/roll that lifts whole axles
+    // off the ground on short, multi-axle brick vehicles.
+    body.angularFactor.set(.18, 1, .18);
     body.addShape(
       new CANNON.Box(new CANNON.Vec3(
         Math.max(.32, size.x * .46),
