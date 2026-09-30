@@ -786,6 +786,21 @@ export class BrickStudio {
           make('Service hinge', 'hinge', 2, 2, 0, BODY_H * 4.2, .8, orange, 0, 82),
           make('Signal roof', 'roof', 2, 2, 0, BODY_H * 7.4, 0, red)
         ]
+      },
+      buggy: {
+        id: 'buggy',
+        label: 'POWER BUGGY',
+        steps: [
+          make('Rear wheel module', 'wheel', 2, 2, 0, 0, 1.6, black),
+          make('Front wheel module', 'wheel', 2, 2, 0, 0, -1.6, black),
+          make('Long chassis', 'brick', 2, 4, 0, BODY_H * .7, 0, blue),
+          make('Drive motor', 'motor', 2, 2, 0, BODY_H * 1.7, .8, red),
+          make('Torque gear', 'gear', 2, 2, 0, BODY_H * 2.9, .8, yellow),
+          make('Program controller', 'program', 2, 2, 0, BODY_H * 1.7, -.8, white),
+          make('Front aero slope', 'slope', 2, 2, 0, BODY_H * 2.9, -1.2, orange),
+          make('Rear propeller', 'propeller', 2, 2, 0, BODY_H * 4.0, 1.55, green),
+          make('Driver roof', 'roof', 2, 2, 0, BODY_H * 4.1, -.3, red)
+        ]
       }
     };
 
