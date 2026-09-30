@@ -23,6 +23,13 @@ type SceneStart = {
   resume?: boolean;
 };
 
+type LaserGate = {
+  beam: Phaser.GameObjects.Rectangle;
+  x: number;
+  phase: number;
+  active: boolean;
+};
+
 const WIDTH = 1280;
 const HEIGHT = 720;
 const FLOOR = 620;
@@ -41,8 +48,10 @@ export class GameScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
   private hazards!: Phaser.Physics.Arcade.StaticGroup;
+  private jumpPads!: Phaser.Physics.Arcade.StaticGroup;
   private projectiles!: Phaser.Physics.Arcade.Group;
   private shards!: Phaser.Physics.Arcade.Group;
+  private laserGates: LaserGate[] = [];
   private enemies: Enemy[] = [];
   private inputSystem!: InputSystem;
   private audio = new AudioSynth();
@@ -60,6 +69,7 @@ export class GameScene extends Phaser.Scene {
   private parryUntil = 0;
   private parryReadyAt = 0;
   private attackUntil = 0;
+  private attackQueuedUntil = 0;
   private comboStep = 0;
   private comboExpires = 0;
   private swingSerial = 1;
@@ -68,8 +78,11 @@ export class GameScene extends Phaser.Scene {
   private invulnerableUntil = 0;
   private contactGraceUntil = 0;
   private overdriveUntil = 0;
+  private bossPattern = 0;
   private bgGrid!: Phaser.GameObjects.TileSprite;
   private bgCity!: Phaser.GameObjects.TileSprite;
+  private bgFar!: Phaser.GameObjects.TileSprite;
+  private bgClouds!: Phaser.GameObjects.TileSprite;
   private commandHandler!: EventListener;
   private virtualHandler!: EventListener;
 
@@ -91,6 +104,16 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.enemies.map(e => e.sprite), this.platforms);
     this.physics.add.overlap(this.player, this.hazards, () => this.hurtPlayer(18, 0));
+    this.physics.add.overlap(this.player, this.jumpPads, () => {
+      const body = this.player.body as Phaser.Physics.Arcade.Body;
+      if (body.velocity.y >= -80) {
+        this.player.setVelocityY(-760);
+        this.jumpQueued = 0;
+        this.tech = 'GIMMICK // IMPULSE PAD + PRESERVED HORIZONTAL MOMENTUM';
+        this.jumpBurst(0xffd35a);
+        this.audio.sfx('jump');
+      }
+    });
     this.physics.add.overlap(this.player, this.projectiles, (_p, projectile) => {
       const shot = projectile as Phaser.Physics.Arcade.Sprite;
       if (!shot.active) return;
@@ -155,10 +178,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildBackground(): void {
-    this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x050712).setScrollFactor(0).setDepth(-20);
-    this.bgCity = this.add.tileSprite(0, 80, WIDTH, HEIGHT - 80, 'skyline').setOrigin(0).setScrollFactor(0).setDepth(-15).setAlpha(.62);
-    this.bgGrid = this.add.tileSprite(0, 170, WIDTH, HEIGHT - 170, 'grid').setOrigin(0).setScrollFactor(0).setDepth(-12).setAlpha(.60);
-    this.add.rectangle(WIDTH / 2, HEIGHT - 58, WIDTH, 116, 0x04060d, .7).setScrollFactor(0).setDepth(-11);
+    this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x050712).setScrollFactor(0).setDepth(-30);
+    this.bgClouds = this.add.tileSprite(0, 55, WIDTH, 150, 'cloud-band').setOrigin(0).setScrollFactor(0).setDepth(-27).setAlpha(.75);
+    this.bgFar = this.add.tileSprite(0, 100, WIDTH, HEIGHT - 100, 'far-city').setOrigin(0).setScrollFactor(0).setDepth(-24).setAlpha(.72);
+    this.bgCity = this.add.tileSprite(0, 100, WIDTH, HEIGHT - 100, 'mid-city').setOrigin(0).setScrollFactor(0).setDepth(-20).setAlpha(.78);
+    this.bgGrid = this.add.tileSprite(0, 180, WIDTH, HEIGHT - 180, 'grid').setOrigin(0).setScrollFactor(0).setDepth(-17).setAlpha(.52);
+
+    for (let x = 600; x < WORLD_WIDTH; x += 720) {
+      const accent = x % 1440 === 0 ? 0xff3bd4 : 0x4ef7ff;
+      this.add.rectangle(x, 240 + (x % 3) * 36, 150, 310, 0x0b1327, .58).setDepth(-14);
+      this.add.rectangle(x + 52, 185 + (x % 5) * 15, 8, 180, accent, .18).setDepth(-13);
+      this.add.rectangle(x - 48, 300, 70, 4, accent, .20).setDepth(-13);
+    }
+
+    this.add.rectangle(3300, 380, 350, 260, 0x4ef7ff, .025).setStrokeStyle(2, 0x4ef7ff, .16).setDepth(-8);
+    this.add.text(3180, 275, 'VECTOR FLOW', { fontFamily: 'ui-monospace, monospace', fontSize: '16px', color: '#4ef7ff' }).setAlpha(.24).setDepth(-7);
+    this.add.rectangle(WIDTH / 2, HEIGHT - 58, WIDTH, 116, 0x04060d, .72).setScrollFactor(0).setDepth(-11);
   }
 
   private makePlatform(x: number, y: number, w: number, h = 26): void {
@@ -178,6 +213,7 @@ export class GameScene extends Phaser.Scene {
   private buildLevel(): void {
     this.platforms = this.physics.add.staticGroup();
     this.hazards = this.physics.add.staticGroup();
+    this.jumpPads = this.physics.add.staticGroup();
     this.projectiles = this.physics.add.group({ allowGravity: false });
     this.shards = this.physics.add.group({ allowGravity: false, immovable: true });
 
@@ -203,6 +239,28 @@ export class GameScene extends Phaser.Scene {
     this.makeHazard(3580, FLOOR, 80);
     this.makeHazard(4420, FLOOR, 90);
     this.makeHazard(5550, FLOOR, 80);
+
+    [
+      [1380, FLOOR - 10],
+      [3440, FLOOR - 10],
+      [5480, FLOOR - 10]
+    ].forEach(([x, y]) => {
+      const pad = this.jumpPads.create(x, y, 'jump-pad') as Phaser.Physics.Arcade.Sprite;
+      pad.setSize(72, 12).setOffset(4, 4);
+      pad.refreshBody();
+    });
+
+    [3820, 4140, 4660].forEach((x, index) => {
+      this.add.image(x - 18, FLOOR - 58, 'laser-post').setDepth(3);
+      this.add.image(x + 18, FLOOR - 58, 'laser-post').setFlipX(true).setDepth(3);
+      const beam = this.add.rectangle(x, FLOOR - 105, 12, 190, 0xff4d79, .28).setDepth(4);
+      beam.setStrokeStyle(2, 0xff9ab2, .8);
+      this.laserGates.push({ beam, x, phase: index * 530, active: true });
+    });
+
+    for (let x = 3160; x <= 3460; x += 60) {
+      this.add.triangle(x, 530, 0, 12, 24, 0, 24, 24, 0x4ef7ff, .16).setAngle(90).setDepth(2);
+    }
   }
 
   private buildPlayer(): void {
@@ -254,8 +312,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, deltaMs: number): void {
-    this.bgCity.tilePositionX = this.cameras.main.scrollX * .18;
-    this.bgGrid.tilePositionX = this.cameras.main.scrollX * .34;
+    this.bgClouds.tilePositionX = this.cameras.main.scrollX * .05;
+    this.bgFar.tilePositionX = this.cameras.main.scrollX * .11;
+    this.bgCity.tilePositionX = this.cameras.main.scrollX * .23;
+    this.bgGrid.tilePositionX = this.cameras.main.scrollX * .40;
 
     if (!this.runActive || this.paused) return;
 
@@ -265,6 +325,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePlayer(time, dt);
     this.updateEnemies(time, dt);
     this.updateProjectiles();
+    this.updateGimmicks(time);
     this.updateZone(false);
 
     if (this.comboCount > 0 && time > this.comboDecayAt) this.comboCount = 0;
@@ -276,7 +337,7 @@ export class GameScene extends Phaser.Scene {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     const grounded = body.blocked.down || body.touching.down;
     if (grounded) this.lastGrounded = time;
-    if (this.inputSystem.pressed('jump')) this.jumpQueued = time + 130;
+    if (this.inputSystem.pressed('jump')) this.jumpQueued = time + 165;
 
     const overdrive = time < this.overdriveUntil;
     const speed = overdrive ? 455 : 350;
@@ -307,7 +368,7 @@ export class GameScene extends Phaser.Scene {
       if (wall && body.velocity.y > 180) this.player.setVelocityY(180);
 
       if (this.jumpQueued > time) {
-        if (grounded || time - this.lastGrounded < 115) {
+        if (grounded || time - this.lastGrounded < 145) {
           this.player.setVelocityY(-570);
           this.jumpQueued = 0;
           this.jumpBurst(0x4ef7ff);
@@ -322,6 +383,16 @@ export class GameScene extends Phaser.Scene {
           this.audio.sfx('jump');
         }
       }
+    }
+
+    if (this.inputSystem.released('jump') && body.velocity.y < -220) {
+      this.player.setVelocityY(body.velocity.y * .52);
+    }
+
+    if (this.player.x > 3160 && this.player.x < 3480 && this.player.y < 560) {
+      this.player.setVelocityX(Phaser.Math.Clamp(body.velocity.x + 18, -120, 520));
+      if (Math.floor(time / 90) % 2 === 0) this.emitWindStreak();
+      this.tech = 'GIMMICK // VECTOR FLOW TUNNEL';
     }
 
     if (this.inputSystem.pressed('dash') && time >= this.dashReadyAt) {
@@ -341,12 +412,18 @@ export class GameScene extends Phaser.Scene {
       this.flashRing(this.player.x, this.player.y + 22, 0xffd35a);
     }
 
-    if (this.inputSystem.pressed('attack')) this.beginAttack(time);
+    if (this.inputSystem.pressed('attack')) {
+      if (this.attackUntil > time) this.attackQueuedUntil = time + 280;
+      else this.beginAttack(time);
+    }
 
     if (this.attackUntil > time) {
       this.player.anims.stop();
-      this.player.setTexture('hero-idle');
+      this.player.setTexture(['hero-atk-1', 'hero-atk-2', 'hero-atk-3'][this.comboStep]);
       this.resolveAttack(time);
+    } else if (this.attackQueuedUntil > time) {
+      this.attackQueuedUntil = 0;
+      this.beginAttack(time);
     }
 
     if (this.inputSystem.pressed('overdrive') && this.run.energy >= 100 && time >= this.overdriveUntil) {
@@ -368,11 +445,21 @@ export class GameScene extends Phaser.Scene {
   private beginAttack(time: number): void {
     if (time < this.attackUntil || time < this.dashUntil) return;
     this.comboStep = time <= this.comboExpires ? (this.comboStep + 1) % 3 : 0;
-    const duration = [220, 245, 350][this.comboStep] * (time < this.overdriveUntil ? .75 : 1);
+    const overdrive = time < this.overdriveUntil;
+    const duration = [190, 215, 315][this.comboStep] * (overdrive ? .72 : 1);
     this.attackUntil = time + duration;
-    this.comboExpires = this.attackUntil + 430;
+    this.comboExpires = this.attackUntil + 500;
     this.swingSerial++;
-    this.tech = this.comboStep === 2 ? 'COMBAT // FINISHER + KNOCKBACK + HIT STOP' : 'COMBAT // 3-STEP CANCEL CHAIN';
+
+    const dir = this.player.flipX ? -1 : 1;
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    const lunge = [105, 135, 210][this.comboStep];
+    if (Math.abs(body.velocity.x) < lunge) this.player.setVelocityX(dir * lunge);
+
+    this.createSlashEffect(this.comboStep, dir);
+    this.tech = this.comboStep === 2
+      ? 'COMBAT // FINISHER ARC + KNOCKBACK + HIT STOP'
+      : 'COMBAT // BUFFERED 3-STEP CANCEL CHAIN';
   }
 
   private resolveAttack(time: number): void {
@@ -390,9 +477,9 @@ export class GameScene extends Phaser.Scene {
       if (!enemy.sprite.active || enemy.lastSwing === this.swingSerial) continue;
       if (!Phaser.Geom.Intersects.RectangleToRectangle(box, enemy.sprite.getBounds())) continue;
       enemy.lastSwing = this.swingSerial;
-      const base = [14, 18, 31][this.comboStep];
+      const base = [14, 19, 34][this.comboStep];
       const damage = Math.round(base * (time < this.overdriveUntil ? 1.6 : 1));
-      this.damageEnemy(enemy, damage, dir * [170, 240, 460][this.comboStep]);
+      this.damageEnemy(enemy, damage, dir * [180, 270, 500][this.comboStep]);
     }
   }
 
@@ -419,38 +506,58 @@ export class GameScene extends Phaser.Scene {
 
       if (enemy.type === 'drone') {
         body.setAllowGravity(false);
-        s.setVelocityY(Math.sin((time + s.x) * .004) * 38);
-        if (distance < 560 && time >= enemy.cooldown) {
-          this.fireProjectile(enemy, 325, 0);
-          enemy.cooldown = time + 1500;
+        s.setVelocityY(Math.sin((time + s.x) * .004) * 52);
+        s.setVelocityX(distance < 220 ? -dir * 90 : distance > 430 && distance < 700 ? dir * 65 : 0);
+        if (distance < 610 && time >= enemy.cooldown) {
+          this.fireProjectile(enemy, 340, -.06);
+          this.time.delayedCall(90, () => enemy.sprite.active && this.fireProjectile(enemy, 340, .06));
+          enemy.cooldown = time + 1680;
+          this.tech = 'AI // DRONE STRAFE + DOUBLE SHOT';
         }
       } else if (enemy.type === 'sniper') {
         s.setVelocityX(0);
-        if (distance < 760 && time >= enemy.cooldown) {
-          this.fireProjectile(enemy, 530, 0);
-          enemy.cooldown = time + 1900;
-          this.tech = 'AI // TELEGRAPHED PRECISION PROJECTILE';
+        if (distance < 820 && time >= enemy.cooldown) {
+          this.queueSniperShot(enemy);
+          enemy.cooldown = time + 2200;
         }
       } else if (enemy.type === 'boss') {
-        enemy.phase = enemy.hp / enemy.maxHp < .34 ? 3 : enemy.hp / enemy.maxHp < .67 ? 2 : 1;
-        if (distance > 155) s.setVelocityX(dir * (enemy.phase === 3 ? 105 : 68));
+        const nextPhase = enemy.hp / enemy.maxHp < .34 ? 3 : enemy.hp / enemy.maxHp < .67 ? 2 : 1;
+        if (nextPhase !== enemy.phase) {
+          enemy.phase = nextPhase;
+          this.bossPhaseShift(enemy);
+        }
+        if (distance > 155) s.setVelocityX(dir * (enemy.phase === 3 ? 145 : enemy.phase === 2 ? 95 : 68));
         else s.setVelocityX(0);
         if (time >= enemy.cooldown) {
           if (this.inMeleeRange(enemy, 58, 22)) {
             this.queueMeleeAttack(enemy, 24, dir * 360, 58, 22, enemy.phase === 3 ? 220 : 300, enemy.phase === 3 ? 900 : 1280);
-          } else if (distance < 760) {
-            const count = enemy.phase;
-            for (let i = 0; i < count; i++) this.fireProjectile(enemy, 340 + enemy.phase * 35, (i - (count - 1) / 2) * .15);
-            enemy.cooldown = time + (enemy.phase === 3 ? 900 : 1280);
-            this.tech = 'BOSS AI // PHASE ' + enemy.phase + ' PATTERN';
+          } else if (distance < 820) {
+            this.bossPattern++;
+            const count = enemy.phase === 1 ? 1 : enemy.phase === 2 ? 3 : 5;
+            const spread = enemy.phase === 3 ? .18 : .14;
+            for (let i = 0; i < count; i++) {
+              this.fireProjectile(enemy, 350 + enemy.phase * 42, (i - (count - 1) / 2) * spread, true);
+            }
+            if (enemy.phase >= 2 && this.bossPattern % 2 === 0) {
+              this.time.delayedCall(260, () => {
+                if (!enemy.sprite.active || !this.runActive) return;
+                for (let i = -2; i <= 2; i++) this.fireProjectile(enemy, 300, i * .24, true);
+              });
+            }
+            enemy.cooldown = time + (enemy.phase === 3 ? 980 : 1320);
+            this.tech = 'BOSS AI // PHASE ' + enemy.phase + ' LAYERED PATTERN';
           }
         }
       } else {
-        const speed = enemy.type === 'guard' ? 105 : 175;
-        const stop = enemy.type === 'guard' ? 78 : 60;
-        if (distance > stop && distance < 520) s.setVelocityX(dir * speed);
+        const isGuard = enemy.type === 'guard';
+        const speed = isGuard ? 92 : distance > 180 ? 210 : 250;
+        const stop = isGuard ? 82 : 62;
+        if (distance > stop && distance < 560) s.setVelocityX(dir * speed);
         else s.setVelocityX(0);
-        const padding = enemy.type === 'guard' ? 26 : 18;
+        if (!isGuard && distance > 150 && distance < 260 && body.blocked.down && time >= enemy.cooldown - 220) {
+          s.setVelocityY(-250);
+        }
+        const padding = isGuard ? 30 : 20;
         if (this.inMeleeRange(enemy, padding, 10) && time >= enemy.cooldown) {
           this.queueMeleeAttack(
             enemy,
@@ -521,8 +628,20 @@ export class GameScene extends Phaser.Scene {
     this.player.setVelocityX(away * Math.max(180, Math.abs((this.player.body as Phaser.Physics.Arcade.Body).velocity.x)));
   }
 
-  private fireProjectile(enemy: Enemy, speed: number, spread: number): void {
-    const shot = this.projectiles.get(enemy.sprite.x, enemy.sprite.y, 'shot') as Phaser.Physics.Arcade.Sprite;
+  private queueSniperShot(enemy: Enemy): void {
+    if (!enemy.sprite.active) return;
+    const line = this.add.graphics().setDepth(6);
+    line.lineStyle(2, 0xffd35a, .55).lineBetween(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y);
+    this.floatText(enemy.sprite.x, enemy.sprite.y - 42, 'LOCK', '#ffd35a');
+    this.tech = 'AI // SNIPER LOCK-ON TELEGRAPH';
+    this.tweens.add({ targets: line, alpha: 0, duration: 420, onComplete: () => line.destroy() });
+    this.time.delayedCall(360, () => {
+      if (enemy.sprite.active && this.runActive && !this.paused) this.fireProjectile(enemy, 585, 0);
+    });
+  }
+
+  private fireProjectile(enemy: Enemy, speed: number, spread: number, bossShot = false): void {
+    const shot = this.projectiles.get(enemy.sprite.x, enemy.sprite.y, bossShot ? 'boss-shot' : 'shot') as Phaser.Physics.Arcade.Sprite;
     if (!shot) return;
     shot.enableBody(true, enemy.sprite.x, enemy.sprite.y, true, true);
     const angle = Phaser.Math.Angle.Between(enemy.sprite.x, enemy.sprite.y, this.player.x, this.player.y) + spread;
@@ -565,6 +684,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damageEnemy(enemy: Enemy, amount: number, knockback: number): void {
+    if (enemy.type === 'guard' && this.time.now >= enemy.stunnedUntil) {
+      const facingPlayer = (enemy.sprite.flipX && this.player.x < enemy.sprite.x) || (!enemy.sprite.flipX && this.player.x > enemy.sprite.x);
+      if (facingPlayer) {
+        amount = Math.max(3, Math.round(amount * .38));
+        knockback *= .35;
+        this.floatText(enemy.sprite.x, enemy.sprite.y - 40, 'GUARD', '#ffd35a');
+        this.flashRing(enemy.sprite.x, enemy.sprite.y, 0xffd35a);
+        this.tech = 'ENEMY IDENTITY // GUARD BLOCKS FRONTAL ATTACKS';
+      }
+    }
     enemy.hp -= amount;
     enemy.sprite.setVelocityX(knockback);
     enemy.stunnedUntil = this.time.now + 130;
@@ -636,6 +765,59 @@ export class GameScene extends Phaser.Scene {
     shard.disableBody(true, true);
     this.tech = 'ASSET PIPELINE // COLLECTIBLE FX + STATE UPDATE';
     this.audio.sfx('pickup');
+  }
+
+  private updateGimmicks(time: number): void {
+    const pBounds = this.player.getBounds();
+    for (const gate of this.laserGates) {
+      const cycle = (time + gate.phase) % 1800;
+      const active = cycle < 980;
+      gate.active = active;
+      gate.beam.setVisible(active || cycle < 1220);
+      gate.beam.setAlpha(active ? .38 + Math.sin(time * .02) * .10 : .08);
+      gate.beam.setFillStyle(active ? 0xff4d79 : 0xffd35a, active ? .34 : .10);
+      if (active && Phaser.Geom.Intersects.RectangleToRectangle(pBounds, gate.beam.getBounds())) {
+        this.hurtPlayer(14, this.player.x < gate.x ? -180 : 180);
+        this.tech = 'GIMMICK // TIMED LASER GATE';
+      }
+    }
+  }
+
+  private bossPhaseShift(enemy: Enemy): void {
+    enemy.stunnedUntil = this.time.now + 720;
+    enemy.cooldown = this.time.now + 900;
+    this.cameras.main.flash(220, enemy.phase === 3 ? 255 : 80, 70, enemy.phase === 2 ? 255 : 120, false);
+    this.cameras.main.shake(320, .018);
+    this.impact(enemy.sprite.x, enemy.sprite.y, enemy.phase === 3 ? 0xffd35a : 0xff3bd4, 52);
+    this.flashRing(enemy.sprite.x, enemy.sprite.y, enemy.phase === 3 ? 0xffd35a : 0xff3bd4);
+    this.floatText(enemy.sprite.x, enemy.sprite.y - 90, 'PHASE ' + enemy.phase, '#ffffff');
+    this.tech = 'BOSS // PHASE ' + enemy.phase + ' BEHAVIOR SHIFT';
+  }
+
+  private createSlashEffect(step: number, dir: number): void {
+    const colors = [0x4ef7ff, 0xff3bd4, 0xffd35a];
+    const radius = [34, 43, 58][step];
+    const slash = this.add.graphics().setDepth(22).setBlendMode(Phaser.BlendModes.ADD);
+    const start = dir > 0 ? -1.0 : Math.PI + 1.0;
+    const end = dir > 0 ? .9 : Math.PI - .9;
+    slash.lineStyle(5 + step * 2, colors[step], .82);
+    slash.beginPath();
+    slash.arc(this.player.x + dir * 22, this.player.y + 4, radius, start, end, dir < 0);
+    slash.strokePath();
+    this.tweens.add({
+      targets: slash,
+      alpha: 0,
+      scaleX: 1.25,
+      scaleY: 1.25,
+      duration: 150 + step * 45,
+      onComplete: () => slash.destroy()
+    });
+  }
+
+  private emitWindStreak(): void {
+    const y = this.player.y + Phaser.Math.Between(-60, 60);
+    const line = this.add.rectangle(this.player.x - 75, y, 70, 2, 0x4ef7ff, .30).setDepth(1);
+    this.tweens.add({ targets: line, x: line.x + 170, alpha: 0, duration: 240, onComplete: () => line.destroy() });
   }
 
   private updateZone(force: boolean): void {
