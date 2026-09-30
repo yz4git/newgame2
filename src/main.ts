@@ -125,6 +125,7 @@ ui.innerHTML = `
         <button data-instruction-model="rover">ROVER</button>
         <button data-instruction-model="house">HOUSE</button>
         <button data-instruction-model="tower">TOWER</button>
+        <button data-instruction-model="buggy">BUGGY</button>
       </div>
     </section>
   </aside>
