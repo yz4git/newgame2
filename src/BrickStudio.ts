@@ -128,6 +128,7 @@ export class BrickStudio {
   private driveBody?: CANNON.Body;
   private driveVehicle?: CANNON.RaycastVehicle;
   private driveWheelVisuals: DriveWheelVisual[] = [];
+  private driveVisualYOffset = 0;
   private driveProgramElapsed = 0;
   private driveTelemetryElapsed = 0;
   private driveProgramRuntime: ProgramRuntime = {
@@ -464,12 +465,13 @@ export class BrickStudio {
     body.addShape(
       new CANNON.Box(new CANNON.Vec3(
         Math.max(.32, size.x * .46),
-        Math.max(.18, Math.min(.72, size.y * .25)),
+        Math.max(.18, Math.min(.28, size.y * .10)),
         Math.max(.32, size.z * .46)
       )),
-      new CANNON.Vec3(center.x, Math.max(.25, center.y * .55), center.z)
+      new CANNON.Vec3(center.x, .30, center.z)
     );
-    body.position.set(0, .68, 0);
+    body.position.set(0, .62, 0);
+    this.driveVisualYOffset = body.position.y;
 
     const vehicle = new CANNON.RaycastVehicle({
       chassisBody: body,
@@ -510,7 +512,7 @@ export class BrickStudio {
           axleLocal: new CANNON.Vec3(-1, 0, 0),
           chassisConnectionPointLocal: new CANNON.Vec3(
             localX,
-            record.y + BODY_H * .38 + .18,
+            record.y + BODY_H * .38 + .12,
             localZ
           ),
           maxSuspensionTravel: .34,
@@ -569,6 +571,7 @@ export class BrickStudio {
     this.driveBody = undefined;
     this.driveVehicle = undefined;
     this.driveWheelVisuals = [];
+    this.driveVisualYOffset = 0;
     this.driveProgramElapsed = 0;
     this.driveTelemetryElapsed = 0;
     this.driveProgramRuntime = { index: 0, elapsed: 0, motorEnabled: true, hingeTarget: null };
@@ -2274,7 +2277,7 @@ export class BrickStudio {
       body.velocity.z *= scale;
     }
 
-    this.brickLayer.position.set(body.position.x, body.position.y, body.position.z);
+    this.brickLayer.position.set(body.position.x, body.position.y - this.driveVisualYOffset, body.position.z);
     this.brickLayer.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
 
     for (const visual of this.driveWheelVisuals) {
@@ -2324,7 +2327,7 @@ export class BrickStudio {
     });
 
     this.orbitTarget.x = body.position.x;
-    this.orbitTarget.y = Math.max(.9, body.position.y + .85);
+    this.orbitTarget.y = Math.max(.9, body.position.y - this.driveVisualYOffset + .85);
     this.orbitTarget.z = body.position.z;
     this.updateCamera();
 
