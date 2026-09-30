@@ -6,6 +6,11 @@ export const STUD_H = 0.14;
 export const STUD_R = 0.245;
 
 export type ProgramMode = 'manual' | 'cruise' | 'patrol' | 'spin';
+export type ProgramCommand =
+  | 'motorOn' | 'motorOff'
+  | 'forward' | 'reverse'
+  | 'left' | 'right' | 'wait'
+  | 'hingeOpen' | 'hingeClose';
 export type PartKind = 'brick' | 'slope' | 'hinge' | 'wheel' | 'window' | 'roof' | 'motor' | 'gear' | 'propeller' | 'program';
 
 export interface BrickSpec {
@@ -16,6 +21,7 @@ export interface BrickSpec {
   rotation: 0 | 1;
   hingeAngle?: number;
   programMode?: ProgramMode;
+  programSteps?: ProgramCommand[];
 }
 
 const bodyGeometry = new THREE.BoxGeometry(1, BODY_H, 1);
@@ -176,6 +182,7 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
       wheel.position.set(side * f.w * STUD * .56, BODY_H * .55, 0);
       wheel.castShadow = true;
       wheel.userData.partRole = 'wheel';
+      wheel.userData.wheelSide = side;
       tag(group, wheel);
       group.add(wheel);
     }
@@ -315,6 +322,7 @@ export function cloneSpec(spec: BrickSpec): BrickSpec {
     color: spec.color,
     rotation: spec.rotation,
     hingeAngle: spec.hingeAngle,
-    programMode: spec.programMode
+    programMode: spec.programMode,
+    programSteps: spec.programSteps ? [...spec.programSteps] : undefined
   };
 }
