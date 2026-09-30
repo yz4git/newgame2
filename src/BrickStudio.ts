@@ -278,7 +278,11 @@ export class BrickStudio {
     if (reset) {
       this.brickLayer.position.set(0, 0, 0);
       this.brickLayer.rotation.set(0, 0, 0);
+      this.driveWheelSpin = 0;
+      this.orbitTarget.x = 0;
+      this.orbitTarget.z = 0;
       this.rebuildAll();
+      this.updateCamera();
     }
     this.ghost.visible = this.mode === 'build';
     this.notify();
@@ -1167,7 +1171,7 @@ export class BrickStudio {
   }
 
   private startCollapse(): void {
-    if (!this.records.length || this.mode === 'instruction') return;
+    if (!this.records.length || this.mode === 'instruction' || this.driveActive) return;
     this.physicsSnapshot = this.snapshot();
     this.selectedIds.clear();
     this.refreshSelectionVisual();
