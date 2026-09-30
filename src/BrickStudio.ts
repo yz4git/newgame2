@@ -221,7 +221,9 @@ export class BrickStudio {
   get suspensionDebug(): string {
     if (!this.driveVehicle) return '';
     return this.driveVehicle.wheelInfos.map((wheel, index) =>
-      `${index}:${wheel.isInContact ? 1 : 0}:${wheel.suspensionLength.toFixed(3)}`
+      `${index}:${wheel.isInContact ? 1 : 0}:${wheel.suspensionLength.toFixed(3)}` +
+      `@${wheel.chassisConnectionPointWorld.x.toFixed(2)},${wheel.chassisConnectionPointWorld.y.toFixed(2)},${wheel.chassisConnectionPointWorld.z.toFixed(2)}` +
+      `d${wheel.directionWorld.x.toFixed(2)},${wheel.directionWorld.y.toFixed(2)},${wheel.directionWorld.z.toFixed(2)}`
     ).join('|');
   }
   get meshedGearPairs(): number {
