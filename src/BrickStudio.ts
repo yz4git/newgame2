@@ -127,6 +127,7 @@ export class BrickStudio {
   private driveVehicle?: CANNON.RaycastVehicle;
   private driveWheelVisuals: DriveWheelVisual[] = [];
   private driveProgramElapsed = 0;
+  private driveTelemetryElapsed = 0;
   private driveProgramRuntime: ProgramRuntime = {
     index: 0,
     elapsed: 0,
@@ -417,6 +418,7 @@ export class BrickStudio {
     this.driveSteer = 0;
     this.driveWheelSpin = 0;
     this.driveProgramElapsed = 0;
+    this.driveTelemetryElapsed = 0;
     this.driveProgramRuntime = { index: 0, elapsed: 0, motorEnabled: true, hingeTarget: null };
     this.gearDirections = this.computeGearDirections();
 
@@ -554,6 +556,7 @@ export class BrickStudio {
     this.driveVehicle = undefined;
     this.driveWheelVisuals = [];
     this.driveProgramElapsed = 0;
+    this.driveTelemetryElapsed = 0;
     this.driveProgramRuntime = { index: 0, elapsed: 0, motorEnabled: true, hingeTarget: null };
     this.driveTerrain.clear();
     this.driveTerrain.visible = false;
@@ -1887,6 +1890,12 @@ export class BrickStudio {
     this.orbitTarget.y = Math.max(.9, body.position.y + .85);
     this.orbitTarget.z = body.position.z;
     this.updateCamera();
+
+    this.driveTelemetryElapsed += delta;
+    if (this.driveTelemetryElapsed >= .25) {
+      this.driveTelemetryElapsed = 0;
+      this.notify();
+    }
   }
 
   private updateCamera(): void {
