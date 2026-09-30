@@ -1,10 +1,11 @@
 {
-  "name": "RIFT//STUDIO — Browser Action Showcase",
-  "short_name": "RIFT//STUDIO",
+  "name": "BRICK//LAB — 3D Block Builder",
+  "short_name": "BRICK//LAB",
+  "description": "A browser-based 3D studded block building simulator.",
   "start_url": "./",
+  "scope": "./",
   "display": "fullscreen",
-  "orientation": "landscape",
-  "background_color": "#050712",
-  "theme_color": "#050712",
-  "description": "A Phaser-powered browser 2D action showcase."
+  "orientation": "any",
+  "background_color": "#dfe6ee",
+  "theme_color": "#e8edf5"
 }

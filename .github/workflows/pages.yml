@@ -1,4 +1,4 @@
-name: Deploy RIFT STUDIO
+name: Deploy BRICK LAB
 
 on:
   push:
@@ -55,32 +55,30 @@ jobs:
           )
 
           latest = f"""<!doctype html>
-          <html lang="en">
+          <html lang="ja">
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width,initial-scale=1">
               <meta name="robots" content="noindex">
               <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-              <meta http-equiv="Pragma" content="no-cache">
-              <meta http-equiv="Expires" content="0">
-              <title>RIFT//STUDIO · Latest</title>
+              <title>BRICK//LAB · Latest</title>
             </head>
-            <body style="background:#050712;color:#eef7ff;font:16px system-ui;padding:24px">
-              <p>Opening the latest RIFT//STUDIO build…</p>
+            <body style="background:#e8edf5;color:#17202b;font:16px system-ui;padding:24px">
+              <p>Opening the latest BRICK//LAB build…</p>
               <script>
                 (async () => {{
                   try {{
                     if ('serviceWorker' in navigator) {{
                       const regs = await navigator.serviceWorker.getRegistrations();
                       await Promise.all(regs
-                        .filter((reg) => reg.scope.includes('/newgame2/'))
-                        .map((reg) => reg.unregister()));
+                        .filter(reg => reg.scope.includes('/newgame2/'))
+                        .map(reg => reg.unregister()));
                     }}
                     if ('caches' in window) {{
                       const keys = await caches.keys();
                       await Promise.all(keys
-                        .filter((key) => key.startsWith('rift-studio-'))
-                        .map((key) => caches.delete(key)));
+                        .filter(key => key.startsWith('brick-lab-'))
+                        .map(key => caches.delete(key)));
                     }}
                   }} catch {{}}
                   location.replace('./?__build={build_id}');

@@ -1,5 +1,5 @@
 {
-  "name": "rift-studio",
+  "name": "brick-lab",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "typescript": "^5.8.0",

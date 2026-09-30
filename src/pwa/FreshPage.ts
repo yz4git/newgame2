@@ -1,9 +1,8 @@
-const CACHE_PREFIX = 'rift-studio-';
-const BUILD_STORAGE_KEY = 'rift-studio-build-id-v1';
+const CACHE_PREFIX = 'brick-lab-';
+const BUILD_STORAGE_KEY = 'brick-lab-build-id-v1';
 
 interface VersionPayload {
   buildId?: unknown;
-  deployedAt?: unknown;
 }
 
 function normalizeBuildId(value: unknown): string | null {
@@ -12,15 +11,11 @@ function normalizeBuildId(value: unknown): string | null {
   return /^[A-Za-z0-9._-]{3,80}$/.test(trimmed) ? trimmed : null;
 }
 
-function versionRequestUrl(): URL {
-  const url = new URL('./version.json', document.baseURI);
-  url.searchParams.set('__fresh', String(Date.now()));
-  return url;
-}
-
-async function fetchCurrentBuildId(): Promise<string | null> {
+async function currentBuildId(): Promise<string | null> {
   try {
-    const response = await fetch(versionRequestUrl(), {
+    const url = new URL('./version.json', document.baseURI);
+    url.searchParams.set('__fresh', String(Date.now()));
+    const response = await fetch(url, {
       cache: 'no-store',
       credentials: 'same-origin',
       headers: { 'cache-control': 'no-cache' }
@@ -33,38 +28,23 @@ async function fetchCurrentBuildId(): Promise<string | null> {
   }
 }
 
-function updateVisibleBuildId(buildId: string): void {
-  try {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get('__build') === buildId) return;
-    url.searchParams.set('__build', buildId);
-    history.replaceState(history.state, '', url);
-  } catch {
-    // Cache-busting aid only. Never interrupt gameplay.
-  }
-}
-
 async function removeOldCaches(buildId: string): Promise<void> {
   if (!('caches' in window)) return;
-  const activeCache = `${CACHE_PREFIX}${buildId}`;
   try {
+    const active = CACHE_PREFIX + buildId;
     const keys = await caches.keys();
-    await Promise.all(
-      keys
-        .filter((key) => key.startsWith(CACHE_PREFIX) && key !== activeCache)
-        .map((key) => caches.delete(key))
-    );
+    await Promise.all(keys
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== active)
+      .map(key => caches.delete(key)));
   } catch {
-    // CacheStorage may be unavailable in restricted/private browsing.
+    // CacheStorage is optional.
   }
 }
 
-async function registerBuildServiceWorker(buildId: string): Promise<void> {
+async function registerWorker(buildId: string): Promise<void> {
   if (!('serviceWorker' in navigator) || location.protocol !== 'https:') return;
-
   const script = new URL('./service-worker.js', document.baseURI);
   script.searchParams.set('build', buildId);
-
   try {
     const registration = await navigator.serviceWorker.register(script, {
       scope: './',
@@ -77,28 +57,26 @@ async function registerBuildServiceWorker(buildId: string): Promise<void> {
 }
 
 export async function installFreshPagePolicy(): Promise<void> {
-  const buildId = await fetchCurrentBuildId();
-  if (!buildId) {
-    if ('serviceWorker' in navigator && location.protocol === 'https:') {
-      await registerBuildServiceWorker('local');
-    }
-    return;
+  const buildId = await currentBuildId();
+  if (!buildId) return;
+
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('__build', buildId);
+    history.replaceState(history.state, '', url);
+  } catch {
+    // URL version marker is optional.
   }
 
-  updateVisibleBuildId(buildId);
-
-  let previousBuild: string | null = null;
+  let previous: string | null = null;
   try {
-    previousBuild = localStorage.getItem(BUILD_STORAGE_KEY);
+    previous = localStorage.getItem(BUILD_STORAGE_KEY);
     localStorage.setItem(BUILD_STORAGE_KEY, buildId);
   } catch {
     // Storage is optional.
   }
 
-  if (previousBuild !== buildId) {
-    await removeOldCaches(buildId);
-  }
-
-  await registerBuildServiceWorker(buildId);
+  if (previous !== buildId) await removeOldCaches(buildId);
+  await registerWorker(buildId);
   await removeOldCaches(buildId);
 }
