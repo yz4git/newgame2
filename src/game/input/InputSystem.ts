@@ -14,6 +14,7 @@ export class InputSystem {
   private virtual = blank();
   private now = blank();
   private prev = blank();
+  private latchedPress = blank();
 
   constructor(private scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
@@ -33,6 +34,7 @@ export class InputSystem {
   }
 
   setVirtual(action: Action, down: boolean): void {
+    if (down && !this.virtual[action]) this.latchedPress[action] = true;
     this.virtual[action] = down;
   }
 
@@ -42,8 +44,8 @@ export class InputSystem {
     const pad = pads?.total ? pads.getPad(0) : undefined;
     const axisX = pad?.axes?.length ? pad.axes[0].getValue() : 0;
 
-    this.now.left = this.virtual.left || this.keys.left.isDown || this.keys.left2.isDown || axisX < -0.28 || !!pad?.left;
-    this.now.right = this.virtual.right || this.keys.right.isDown || this.keys.right2.isDown || axisX > 0.28 || !!pad?.right;
+    this.now.left = this.virtual.left || this.keys.left.isDown || this.keys.left2.isDown || axisX < -0.24 || !!pad?.left;
+    this.now.right = this.virtual.right || this.keys.right.isDown || this.keys.right2.isDown || axisX > 0.24 || !!pad?.right;
     this.now.jump = this.virtual.jump || this.keys.jump.isDown || this.keys.jump2.isDown || !!pad?.A;
     this.now.attack = this.virtual.attack || this.keys.attack.isDown || !!pad?.X;
     this.now.dash = this.virtual.dash || this.keys.dash.isDown || !!pad?.B;
@@ -56,6 +58,12 @@ export class InputSystem {
   }
 
   pressed(action: Action): boolean {
-    return this.now[action] && !this.prev[action];
+    const pressed = this.latchedPress[action] || (this.now[action] && !this.prev[action]);
+    this.latchedPress[action] = false;
+    return pressed;
+  }
+
+  released(action: Action): boolean {
+    return !this.now[action] && this.prev[action];
   }
 }
