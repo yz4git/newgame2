@@ -6,8 +6,15 @@ import { Hud } from './ui/Hud';
 import { installFreshPagePolicy } from './pwa/FreshPage';
 
 function syncViewportHeight(): void {
-  const height = Math.round(window.visualViewport?.height ?? window.innerHeight);
+  const viewport = window.visualViewport;
+  const height = Math.round(viewport?.height ?? window.innerHeight);
+  const width = Math.round(viewport?.width ?? window.innerWidth);
+  const top = Math.round(viewport?.offsetTop ?? 0);
+  const left = Math.round(viewport?.offsetLeft ?? 0);
   document.documentElement.style.setProperty('--app-height', height + 'px');
+  document.documentElement.style.setProperty('--app-width', width + 'px');
+  document.documentElement.style.setProperty('--app-top', top + 'px');
+  document.documentElement.style.setProperty('--app-left', left + 'px');
 }
 
 syncViewportHeight();
