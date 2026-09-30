@@ -5,7 +5,8 @@ export const BODY_H = 0.48;
 export const STUD_H = 0.14;
 export const STUD_R = 0.245;
 
-export type PartKind = 'brick' | 'slope' | 'hinge' | 'wheel' | 'window' | 'roof';
+export type ProgramMode = 'manual' | 'cruise' | 'patrol' | 'spin';
+export type PartKind = 'brick' | 'slope' | 'hinge' | 'wheel' | 'window' | 'roof' | 'motor' | 'gear' | 'propeller' | 'program';
 
 export interface BrickSpec {
   kind: PartKind;
@@ -14,6 +15,7 @@ export interface BrickSpec {
   color: number;
   rotation: 0 | 1;
   hingeAngle?: number;
+  programMode?: ProgramMode;
 }
 
 const bodyGeometry = new THREE.BoxGeometry(1, BODY_H, 1);
@@ -105,6 +107,10 @@ export function partHeight(spec: BrickSpec): number {
     case 'wheel': return BODY_H * 1.35;
     case 'window': return BODY_H * 2.8;
     case 'roof': return BODY_H * 2.15;
+    case 'motor': return BODY_H * 1.35;
+    case 'gear': return BODY_H * 1.15;
+    case 'propeller': return BODY_H * 1.7;
+    case 'program': return BODY_H * 1.55;
     default: return BODY_H;
   }
 }
@@ -215,6 +221,87 @@ export function createPart(spec: BrickSpec, opacity = 1): THREE.Group {
     ridge.position.y = partHeight(spec) - .12;
     tag(group, ridge);
     group.add(ridge);
+  } else if (spec.kind === 'motor') {
+    addBody(group, spec, mat, BODY_H * .44);
+    const motorMat = material(0x3d4654, opacity);
+    const motor = new THREE.Mesh(new THREE.CylinderGeometry(.29, .29, f.d * STUD * .72, 24), motorMat);
+    motor.rotation.x = Math.PI / 2;
+    motor.position.y = BODY_H * .82;
+    motor.castShadow = true;
+    motor.userData.partRole = 'motor-rotor';
+    tag(group, motor);
+    group.add(motor);
+
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(.15, .15, .28, 18), material(0xf1c232, opacity));
+    cap.rotation.z = Math.PI / 2;
+    cap.position.set(f.w * STUD * .34, BODY_H * .82, 0);
+    cap.userData.partRole = 'motor-rotor';
+    tag(group, cap);
+    group.add(cap);
+  } else if (spec.kind === 'gear') {
+    addBody(group, spec, mat, BODY_H * .34);
+    const gearMat = material(0xd8a925, opacity);
+    const gear = new THREE.Mesh(new THREE.TorusGeometry(.38, .12, 10, 24), gearMat);
+    gear.rotation.x = Math.PI / 2;
+    gear.position.y = BODY_H * .70;
+    gear.castShadow = true;
+    gear.userData.partRole = 'gear';
+    tag(group, gear);
+    group.add(gear);
+    for (let i = 0; i < 10; i++) {
+      const tooth = new THREE.Mesh(new THREE.BoxGeometry(.13, .12, .20), gearMat);
+      const a = i / 10 * Math.PI * 2;
+      tooth.position.set(Math.cos(a) * .48, BODY_H * .70, Math.sin(a) * .48);
+      tooth.rotation.y = -a;
+      tooth.userData.partRole = 'gear';
+      tag(group, tooth);
+      group.add(tooth);
+    }
+  } else if (spec.kind === 'propeller') {
+    addBody(group, spec, mat, BODY_H * .32);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(.18, .18, .28, 18), material(0x555b63, opacity));
+    hub.rotation.x = Math.PI / 2;
+    hub.position.y = BODY_H * .74;
+    hub.userData.partRole = 'propeller';
+    tag(group, hub);
+    group.add(hub);
+
+    const rotor = new THREE.Group();
+    rotor.position.set(0, BODY_H * .74, f.d * STUD * .32);
+    rotor.userData.partRole = 'propeller-rotor';
+    for (let i = 0; i < 3; i++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(.13, .72, .055), material(spec.color, opacity));
+      blade.position.y = .34;
+      blade.rotation.z = i * Math.PI * 2 / 3;
+      blade.castShadow = true;
+      tag(group, blade);
+      rotor.add(blade);
+    }
+    tag(group, rotor);
+    group.add(rotor);
+  } else if (spec.kind === 'program') {
+    addBody(group, spec, material(0x2e3745, opacity), BODY_H * 1.05);
+    const screen = new THREE.Mesh(
+      new THREE.BoxGeometry(f.w * STUD * .62, BODY_H * .42, .045),
+      new THREE.MeshStandardMaterial({
+        color: 0x6ee7ff,
+        emissive: 0x1f9db7,
+        emissiveIntensity: opacity >= 1 ? .7 : .25,
+        roughness: .28,
+        transparent: opacity < 1,
+        opacity
+      })
+    );
+    screen.position.set(0, BODY_H * .76, f.d * STUD * .5 - .015);
+    screen.userData.partRole = 'program-screen';
+    tag(group, screen);
+    group.add(screen);
+
+    const led = new THREE.Mesh(new THREE.SphereGeometry(.07, 12, 8), material(0x5cff86, opacity));
+    led.position.set(f.w * STUD * .28, BODY_H * 1.07, f.d * STUD * .5 - .01);
+    led.userData.partRole = 'program-led';
+    tag(group, led);
+    group.add(led);
   }
 
   return group;
@@ -227,6 +314,7 @@ export function cloneSpec(spec: BrickSpec): BrickSpec {
     d: spec.d,
     color: spec.color,
     rotation: spec.rotation,
-    hingeAngle: spec.hingeAngle
+    hingeAngle: spec.hingeAngle,
+    programMode: spec.programMode
   };
 }
